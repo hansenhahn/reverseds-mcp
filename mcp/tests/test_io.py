@@ -1,5 +1,5 @@
 """Pure IO decode tests (schema + VRAM layout) — without the emulator."""
-from re_mcp.domain.io import DecodedRegister, IoMap, vram_layout
+from re_mcp.domain.io import DecodedRegister, IoMap, VramLayout
 
 _MAP = IoMap.default()
 
@@ -72,7 +72,7 @@ def test_vram_layout_smoke() -> None:
     """The smoke VRAMCNT values resolve to the expected bank→window bindings."""
     banks = {"A": 0x83, "B": 0x8B, "C": 0x80, "D": 0x84, "E": 0x83,
              "F": 0x82, "G": 0x8C, "H": 0x03, "I": 0x00}
-    bindings = {b.bank: b for b in vram_layout(banks)}
+    bindings = {b.bank: b for b in VramLayout.from_vramcnt(banks).bindings()}
     assert set(bindings) == {"A", "B", "C", "D", "E", "F", "G"}  # H, I disabled
     assert bindings["C"].target == "lcdc"
     assert bindings["C"].address == 0x6840000

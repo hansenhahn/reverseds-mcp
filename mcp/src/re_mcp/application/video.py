@@ -1,7 +1,7 @@
 """Application service: decode video state and VRAM layout (over the Debugger port)."""
 from dataclasses import dataclass
 
-from ..domain.io import DecodedRegister, IoMap, VramBinding, vram_layout
+from ..domain.io import DecodedRegister, IoMap, VramBinding, VramLayout
 from .ports import Debugger
 
 # VRAMCNT_A..I: A..G at 0x240..0x246, H at 0x248, I at 0x249 (WRAMCNT at 0x247).
@@ -72,7 +72,7 @@ class VideoReader:
             bank: self._debugger.read_memory(addr, 1)[0]
             for bank, addr in _BANK_ADDR.items()
         }
-        return vram_layout(banks)
+        return VramLayout.from_vramcnt(banks).bindings()
 
     def read_vram(self, addr: int, size: int) -> bytes:
         """Read ``size`` bytes of VRAM at ``addr``.
