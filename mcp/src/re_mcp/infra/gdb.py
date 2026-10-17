@@ -254,7 +254,7 @@ class GdbBackend(Debugger):
         if self._proc is None:
             return
         self._proc.send_signal(signal.SIGINT)
-        if self.is_running():
+        if self._run_thread is not None and self.is_running():
             # deixa a thread do `continue` consumir a parada
             self._run_thread.join(10)
             self._run_thread = None

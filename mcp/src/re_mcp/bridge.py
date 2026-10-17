@@ -4,7 +4,7 @@ Acesso preguiçoso (lazy): a conexão só é aberta na primeira chamada, para o 
 subir mesmo sem emulador rodando.
 """
 from .config import Config
-from .domain.ports import ControlChannel, Debugger
+from .domain.ports import CartFs, ControlChannel, Debugger
 from .domain.types import Symbol
 from .infra.control import UnixControlChannel
 from .infra.gdb import GdbBackend
@@ -25,7 +25,7 @@ class Bridge:
         self._debugger: Debugger | None = None
         self._symbols: list[Symbol] = []
         self._snapshots: dict[str, tuple[int, bytes]] = {}
-        self._nitrofs: NitroFs | None = None
+        self._nitrofs: CartFs | None = None
 
     @property
     def config(self) -> Config:
@@ -48,11 +48,11 @@ class Bridge:
         """As capturas de memória guardadas (nome -> (base, bytes))."""
         return self._snapshots
 
-    def nitrofs(self) -> NitroFs:
+    def nitrofs(self) -> CartFs:
         """Devolve o NitroFS da ROM, abrindo-o na primeira chamada.
 
         Returns:
-            NitroFs: O filesystem da ROM.
+            CartFs: O filesystem da ROM.
 
         Raises:
             NitroFsError: Se a ROM não estiver configurada ou o ndstool falhar.

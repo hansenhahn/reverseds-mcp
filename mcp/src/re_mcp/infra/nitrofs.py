@@ -8,6 +8,8 @@ import os
 import re
 import subprocess
 
+from ..domain.ports import CartFs
+
 _LINE = re.compile(
     r"^\s*\d+\s+0x([0-9A-Fa-f]+)\s+0x([0-9A-Fa-f]+)\s+\d+\s+(/\S.*?)\s*$"
 )
@@ -17,7 +19,7 @@ class NitroFsError(RuntimeError):
     """Erro ao listar o NitroFS da ROM."""
 
 
-class NitroFs:
+class NitroFs(CartFs):
     """Mapa offset→arquivo de uma ROM de NDS, obtido do `ndstool`."""
 
     def __init__(self, rom_path: str, ndstool_path: str = "ndstool") -> None:
