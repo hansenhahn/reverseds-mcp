@@ -31,6 +31,8 @@ determinísticos tira a interpretação do runtime do agente.
 
 ## Impact
 
-- MCP: novo módulo de dados/schema do IO map, um domínio puro de decode e tools novas.
-- Não toca o emulador; sem dependência nova obrigatória (schema embutido/vendorizado).
+- MCP: schema + `decode_io` puro em `domain/`; serviço que orquestra a porta `Debugger`
+  em `application/`; tools finas em `tools/`. Sem porta nova e sem dependência nova
+  (schema embutido/vendorizado).
+- Não toca o emulador.
 - Sem custo por quadro (tudo sob demanda, fora da EmuThread).
