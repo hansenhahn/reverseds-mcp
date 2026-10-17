@@ -1,7 +1,7 @@
 """Porta das tabelas de overlay (y9/y7) do cartucho."""
 from typing import Protocol, runtime_checkable
 
-from ..overlays import Overlay, OverlayHit
+from ...domain.overlays import Overlay, OverlayHit
 
 
 @runtime_checkable

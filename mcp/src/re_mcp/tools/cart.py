@@ -1,7 +1,7 @@
 """Tools MCP do cartucho: filesystem (NitroFS) e overlays."""
 import os
 
-from ..domain.emulation import CartTrace, TraceError
+from ..application.cart_trace import CartTrace, TraceError
 from ..domain.overlays import Overlay
 from ..infra.control import ControlError
 from ..infra.ndsrom import NdsRomError

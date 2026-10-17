@@ -1,5 +1,6 @@
 """Testes dos serviços de depuração (domínio, com um Debugger fake)."""
-from re_mcp.domain.debug import MemoryDiff, Watchpoints
+from re_mcp.application.watchpoints import Watchpoints
+from re_mcp.domain.debug import MemoryDiff
 
 
 class FakeDebugger:

@@ -1,7 +1,7 @@
-"""Portas (interfaces) do domínio para os backends do emulador.
+"""Portas (interfaces) da aplicação para os backends do emulador.
 
-O domínio fala com estas abstrações; os adaptadores concretos (infra) as
-implementam. Usa `typing.Protocol` (não ABCs); os contratos são verificados
+A camada de aplicação fala com estas abstrações; os adaptadores concretos (infra)
+as implementam. Usa `typing.Protocol` (não ABCs); os contratos são verificados
 estaticamente com `pyright` (ver `pyrightconfig.json`).
 """
 from .cartfs import CartFs

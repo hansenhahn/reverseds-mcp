@@ -13,7 +13,7 @@ import tempfile
 import threading
 import time
 
-from ..domain.ports import Debugger
+from ..application.ports import Debugger
 
 _CORES = {"arm9", "arm7"}
 

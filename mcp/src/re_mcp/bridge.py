@@ -4,8 +4,8 @@ Composition root: fiação lazy dos adaptadores e dos objetos de domínio. A con
 só é aberta na primeira chamada, para o MCP subir mesmo sem emulador rodando.
 """
 from .config import Config
-from .domain.debug import Snapshots
-from .domain.ports import CartFs, ControlChannel, Debugger, FileStore, Overlays
+from .application.ports import CartFs, ControlChannel, Debugger, FileStore, Overlays
+from .application.snapshots import Snapshots
 from .domain.symbols import SymbolTable
 from .infra.control import UnixControlChannel
 from .infra.files import OutDir

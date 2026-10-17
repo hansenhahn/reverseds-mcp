@@ -1,5 +1,6 @@
 """Tools MCP de workflows de RE: watchpoints, snapshots e símbolos."""
-from ..domain.debug import SnapshotError, Watchpoints
+from ..application.snapshots import SnapshotError
+from ..application.watchpoints import Watchpoints
 from ..domain.symbols import SymbolTable
 from ..infra.gdb import DebugError
 from .app import bridge, debug_error, mcp

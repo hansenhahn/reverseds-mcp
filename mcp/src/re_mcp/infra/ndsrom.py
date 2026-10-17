@@ -7,7 +7,7 @@ from typing import BinaryIO
 
 from ..domain.cartfs import FileEntry, NdsFs, NdsHeader
 from ..domain.overlays import Overlay, OverlayHit, OverlayTable
-from ..domain.ports import CartFs, Overlays
+from ..application.ports import CartFs, Overlays
 
 _HEADER_SIZE = 0x60
 _CORES = ("arm9", "arm7")

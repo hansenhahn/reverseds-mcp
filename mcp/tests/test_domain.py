@@ -1,8 +1,9 @@
 """Testes do domínio puro (`disasm`, macros de input) — sem emulador."""
 import pytest
 
+from re_mcp.application.input import InputMacros
 from re_mcp.domain.disasm import Disassembler
-from re_mcp.domain.emulation import NO_KEY, InputMacros, InputStep
+from re_mcp.domain.input import NO_KEY, InputStep
 
 
 class FakeChannel:

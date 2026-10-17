@@ -3,7 +3,9 @@ import io
 
 from PIL import Image
 
-from ..domain.emulation import CartTrace, InputMacros, InputStep
+from ..application.cart_trace import CartTrace
+from ..application.input import InputMacros
+from ..domain.input import InputStep
 from ..infra.control import ControlError
 from ..infra.gdb import DebugError
 from .app import bridge, control_call, error, mcp

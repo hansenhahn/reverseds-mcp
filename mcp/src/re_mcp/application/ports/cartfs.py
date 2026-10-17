@@ -1,7 +1,7 @@
 """Porta do filesystem de cartucho (NitroFS) da ROM."""
 from typing import Protocol, runtime_checkable
 
-from ..cartfs import FileEntry
+from ...domain.cartfs import FileEntry
 
 
 @runtime_checkable
