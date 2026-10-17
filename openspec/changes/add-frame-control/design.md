@@ -13,8 +13,10 @@ serve: o gdb não avança frames nem garante framebuffer composto. Este change �
 - Avanço determinístico de quadros e parada no vblank com framebuffer composto.
 
 **Non-Goals:**
-- Captura pausada (`add-paused-capture`), `render_layer` (`add-layer-render`),
-  DMA trace (`add-dma-trace`) — changes separados.
+- "Rodar até um evento" (framebuffer mudou, `PC`, condição) — isso é **condição**, não
+  frame; o dono é o `debug_resume`/watchpoint, não o frame-control.
+- Captura pausada (`add-paused-capture`), `render_layer` (`add-layer-render`), DMA trace
+  (`add-dma-trace`).
 - Controle de velocidade (slow motion/turbo).
 
 ## Decisions
@@ -24,10 +26,14 @@ serve: o gdb não avança frames nem garante framebuffer composto. Este change �
 - **Parar no vblank**, não em ponto arbitrário: é quando o framebuffer está composto,
   habilitando captura/`render_layer` logo em seguida. Alternativa descartada: parar no
   HBlank — framebuffer incompleto.
+- **`run_until_vblank` é primitivo interno**, não tool pública: como operação pública
+  equivale a `step_frame(1)` e viraria 60 chamadas/s pelo canal de controle (chato, lento,
+  frágil). `step_frame(N)` resolve "avançar N" numa chamada; `pause_at_next_frame` resolve
+  "parar quem já está rodando". Alternativa descartada: expor `run_until_vblank` — redundante.
 - **Contador de quadros + flag de parada O(1) por quadro, sem alocação**, conforme a regra
   de carga mínima do canal de controle.
-- **Gatilho por mensagem** (`emu.step_frame`/`run_until_vblank`/`pause_at_next_frame`),
-  respondendo quando a parada ocorre (fora da thread de emulação).
+- **Gatilho por mensagem** (`emu.step_frame`/`emu.pause_at_next_frame`), respondendo quando
+  a parada ocorre (fora da thread de emulação).
 
 ## Risks / Trade-offs
 
