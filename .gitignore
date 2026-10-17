@@ -1,0 +1,17 @@
+# Sem documentação (por enquanto)
+*.md
+*.html
+*.bmp
+
+# Artefatos de captura/stream
+*.png
+
+# Ambientes e build
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Specs / editor
+openspec/
+.opencode/

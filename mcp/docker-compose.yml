@@ -1,0 +1,21 @@
+# Orquestra o MCP junto do melonDS rodando no host.
+#
+# Pré-requisitos:
+#   - melonDS rodando com o canal de controle em /tmp/melonds-control.sock
+#   - ROM_PATH apontando para a ROM (para o NitroFS)
+#
+# `network_mode: host` é necessário para o gdb alcançar o stub em 127.0.0.1:3333
+# (dentro do contêiner, 127.0.0.1 seria o próprio contêiner).
+services:
+  re-mcp:
+    build: .
+    network_mode: host
+    volumes:
+      - /tmp/melonds-control.sock:/run/melonds/control.sock
+      - ${ROM_PATH:-/dev/null}:/rom.nds:ro
+    environment:
+      RE_MCP_CONTROL_SOCKET: /run/melonds/control.sock
+      RE_MCP_ROM: /rom.nds
+      RE_MCP_NDSTOOL: /usr/local/bin/ndstool
+    stdin_open: true
+    tty: true
