@@ -20,6 +20,12 @@ class FakeChannel:
             raise RuntimeError("boom")
         return {}
 
+    def read_message(self, timeout: float) -> dict | None:
+        return None
+
+    def close(self) -> None:
+        pass
+
 
 def test_disassemble_arm() -> None:
     """`mov r0, #1` (ARM) é desmontado como `mov`."""

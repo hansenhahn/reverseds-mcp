@@ -50,10 +50,18 @@ context: |
 
   - **Hexagonal (ports & adapters)**: o domínio (workflows de RE e tipos) NÃO
     depende de I/O. As bordas são adaptadores atrás de "portas" (interfaces),
-    usando `typing.Protocol` (`@runtime_checkable` quando preciso) — NÃO ABCs:
+    usando `typing.Protocol` (`@runtime_checkable` quando preciso) — NÃO ABCs
+    (ABC só para comportamento compartilhado/hierarquia, nunca como contrato):
     cliente do canal de controle (socket), cliente do gdb, parser NitroFS (FAT/FNT),
     carregador de símbolos (.map) e o transporte MCP. O domínio depende de
-    abstrações, não de implementações concretas.
+    abstrações, não de implementações concretas. As portas ficam em
+    **`domain/ports/`** (subpacote, um módulo por domínio: `control`, `debug`,
+    `cartfs`, ...), reexportadas em `domain/ports/__init__.py`; os adaptadores em
+    `infra/` herdam a porta explicitamente (ex.: `class GdbBackend(Debugger)`).
+  - **Contratos estáticos (pyright)**: as portas são `Protocol` e os contratos são
+    verificados **estaticamente** com **pyright** (`mcp/pyrightconfig.json`), não em
+    runtime. `uv run pyright` sem erros faz parte da definição de pronto; os fakes de
+    teste também precisam satisfazer o `Protocol`.
   - **SOLID**: responsabilidade única por classe/módulo; inversão de dependência
     nas portas.
   - **Domínios bem separados**: um módulo por domínio — `control` (canal de
@@ -122,6 +130,7 @@ operations:
       - Mantenha o diff mínimo e confinado ao escopo do change.
       - Não altere o comportamento de emulação; rode o build e os testes de smoke existentes antes de concluir.
       - Não reformate código não relacionado nem introduza abstrações especulativas.
+      - Rode `uv run pyright` (MCP) e `uv run python -m pytest`; não conclua com erros. Novos adaptadores devem satisfazer a porta (`Protocol`).
   archive:
     guidance:
       - Resuma o que mudou e confirme que não houve regressão de comportamento.
