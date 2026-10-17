@@ -1,15 +1,15 @@
-"""Armazenamento de artefatos no diretório de saída do MCP (`RE_MCP_OUT_DIR`)."""
+"""Artifact storage in the MCP output directory (`RE_MCP_OUT_DIR`)."""
 import os
 
 
 class OutDir:
-    """Implementa a porta ``FileStore`` gravando sob o diretório de saída."""
+    """Implements the ``FileStore`` port by writing under the output directory."""
 
     def __init__(self, root: str) -> None:
-        """Guarda o diretório raiz de saída.
+        """Store the output root directory.
 
         Parameters:
-            root (str): Diretório de saída (`RE_MCP_OUT_DIR`).
+            root (str): Output directory (`RE_MCP_OUT_DIR`).
         """
         self._root = os.path.abspath(root)
 

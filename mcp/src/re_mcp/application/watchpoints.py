@@ -1,4 +1,4 @@
-"""Serviço de aplicação: acha quem escreve/lê um endereço (watchpoint + execução)."""
+"""Application service: find what writes/reads an address (watchpoint + execution)."""
 from ..domain.debug import WatchpointHit
 from .ports import Debugger
 
@@ -6,26 +6,26 @@ _CONTEXT_REGS = ("r0", "r1", "r2", "r3", "sp", "lr")
 
 
 class Watchpoints:
-    """Serviço: acha quem escreve/lê um endereço (watchpoint + execução)."""
+    """Service: find what writes/reads an address (watchpoint + execution)."""
 
     def __init__(self, debugger: Debugger) -> None:
-        """Monta o serviço sobre um backend de debug.
+        """Build the service over a debug backend.
 
         Parameters:
-            debugger (Debugger): Backend de debug conectado.
+            debugger (Debugger): A connected debug backend.
         """
         self._debugger = debugger
 
     def find_write(
         self, addr: int, timeout: float = 30.0, condition: str | None = None
     ) -> WatchpointHit | None:
-        """Acha o código que escreve em ``addr`` (watchpoint de escrita + run)."""
+        """Find the code that writes to ``addr`` (write watchpoint + run)."""
         return self._find(addr, "write", timeout, condition)
 
     def find_read(
         self, addr: int, timeout: float = 30.0, condition: str | None = None
     ) -> WatchpointHit | None:
-        """Acha o código que lê ``addr`` (watchpoint de leitura + run)."""
+        """Find the code that reads ``addr`` (read watchpoint + run)."""
         return self._find(addr, "read", timeout, condition)
 
     def _find(

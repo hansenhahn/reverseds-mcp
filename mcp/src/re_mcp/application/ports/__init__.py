@@ -1,8 +1,8 @@
-"""Portas (interfaces) da aplicação para os backends do emulador.
+"""Application ports (interfaces) for the emulator backends.
 
-A camada de aplicação fala com estas abstrações; os adaptadores concretos (infra)
-as implementam. Usa `typing.Protocol` (não ABCs); os contratos são verificados
-estaticamente com `pyright` (ver `pyrightconfig.json`).
+The application layer talks to these abstractions; the concrete adapters (infra)
+implement them. Uses `typing.Protocol` (not ABCs); the contracts are checked
+statically with `pyright` (see `pyrightconfig.json`).
 """
 from .cartfs import CartFs
 from .control import ControlChannel

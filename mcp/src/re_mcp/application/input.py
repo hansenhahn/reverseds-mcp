@@ -1,4 +1,4 @@
-"""Serviço de aplicação: macros de input (tap/sequência) sobre o canal de controle."""
+"""Application service: input macros (tap/sequence) over the control channel."""
 import time
 from collections.abc import Callable
 
@@ -7,22 +7,22 @@ from .ports import ControlChannel
 
 
 class InputMacros:
-    """Serviço: macros de input (tap e sequência) sobre o canal de controle."""
+    """Service: input macros (tap and sequence) over the control channel."""
 
     def __init__(
         self, channel: ControlChannel, sleep: Callable[[float], None] = time.sleep
     ) -> None:
-        """Monta o serviço sobre um canal de controle.
+        """Build the service over a control channel.
 
         Parameters:
-            channel (ControlChannel): Canal de controle conectado.
-            sleep (Callable[[float], None]): Injetável para testes.
+            channel (ControlChannel): A connected control channel.
+            sleep (Callable[[float], None]): Injectable for tests.
         """
         self._channel = channel
         self._sleep = sleep
 
     def tap(self, mask: int, ms: int) -> None:
-        """Pressiona ``mask``, espera ``ms`` e solta (sempre solta, mesmo em erro)."""
+        """Press ``mask``, wait ``ms`` and release (always releases, even on error)."""
         self._channel.call("input.key", {"mask": mask})
         try:
             self._sleep(ms / 1000.0)
@@ -30,10 +30,10 @@ class InputMacros:
             self._channel.call("input.release")
 
     def run(self, steps: list[InputStep], max_total_ms: int = MAX_TOTAL_MS) -> None:
-        """Executa os passos em ordem; solta o input ao final (mesmo em erro).
+        """Run the steps in order; release the input at the end (even on error).
 
         Raises:
-            ValueError: Se o tempo total exceder ``max_total_ms``.
+            ValueError: If the total time exceeds ``max_total_ms``.
         """
         total = sum(step.ms + step.after_ms for step in steps)
         if total > max_total_ms:

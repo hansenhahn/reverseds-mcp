@@ -1,8 +1,8 @@
-"""Adaptador do backend de debug: um processo `gdb` conectado ao stub do melonDS.
+"""Debug backend adapter: a `gdb` process connected to the melonDS stub.
 
-Usa o `gdb-multiarch` em linha de comando, com o limite de watchpoint de hardware
-aplicado (para os watchpoints serem de hardware de verdade). A comunicação é por
-stdin/stdout (binário) com `select`, para respeitar timeouts.
+Uses `gdb-multiarch` on the command line, with the hardware watchpoint limit applied
+(so watchpoints are real hardware). Communication is over stdin/stdout (binary) with
+`select`, to respect timeouts.
 """
 import os
 import re
@@ -19,19 +19,19 @@ _CORES = {"arm9", "arm7"}
 
 
 class DebugError(RuntimeError):
-    """Erro do backend de debug."""
+    """Debug backend error."""
 
 
 class GdbBackend(Debugger):
-    """Backend de debug via `gdb-multiarch` conectado ao stub do melonDS."""
+    """Debug backend via `gdb-multiarch` connected to the melonDS stub."""
 
     def __init__(self, gdb_path: str, arm9_port: int, arm7_port: int) -> None:
-        """Guarda a configuração do backend.
+        """Store the backend configuration.
 
         Parameters:
-            gdb_path (str): Executável do gdb (ex.: ``gdb-multiarch``).
-            arm9_port (int): Porta do stub do ARM9.
-            arm7_port (int): Porta do stub do ARM7.
+            gdb_path (str): Path to the gdb executable (e.g. ``gdb-multiarch``).
+            arm9_port (int): Port of the ARM9 stub.
+            arm7_port (int): Port of the ARM7 stub.
         """
         self._gdb_path = gdb_path
         self._ports = {"arm9": arm9_port, "arm7": arm7_port}
@@ -42,13 +42,13 @@ class GdbBackend(Debugger):
         self._run_timeout: float = 3600.0
 
     def connect(self, core: str) -> None:
-        """Conecta ao core escolhido, iniciando o gdb.
+        """Connect to the chosen core, starting gdb.
 
         Parameters:
-            core (str): ``arm9`` ou ``arm7``.
+            core (str): ``arm9`` or ``arm7``.
 
         Raises:
-            DebugError: Se o core for inválido ou o gdb não conectar.
+            DebugError: If the core is invalid or gdb cannot connect.
         """
         if core not in _CORES:
             raise DebugError(f"core inválido: {core!r} (use 'arm9' ou 'arm7')")
@@ -72,21 +72,21 @@ class GdbBackend(Debugger):
         out = self._cmd(f"target remote 127.0.0.1:{self._ports[core]}", timeout=15)
         if "Remote debugging" not in out and "error" in out.lower():
             raise DebugError(f"falha ao conectar no stub: {out.strip()}")
-        # deve ser setado APÓS o connect (o gdb reinicia isso ao conectar)
+        # must be set AFTER connect (gdb resets this on connect)
         self._cmd("set remote hardware-watchpoint-limit 4")
         self._core = core
 
     def read_register(self, name: str) -> int:
-        """Lê um registrador pelo nome (ex.: ``pc``).
+        """Read a register by name (e.g. ``pc``).
 
         Parameters:
-            name (str): Nome do registrador.
+            name (str): Register name.
 
         Returns:
-            int: Valor do registrador.
+            int: The register value.
 
         Raises:
-            DebugError: Se não for possível ler.
+            DebugError: If it cannot read.
         """
         out = self._cmd(f"p/x ${name}")
         match = re.search(r"\$\d+ = (0x[0-9a-fA-F]+)", out)
@@ -95,23 +95,23 @@ class GdbBackend(Debugger):
         return int(match.group(1), 16)
 
     def write_register(self, name: str, value: int) -> None:
-        """Escreve um valor num registrador.
+        """Write a value to a register.
 
         Parameters:
-            name (str): Nome do registrador.
-            value (int): Valor a escrever.
+            name (str): Register name.
+            value (int): Value to write.
         """
         self._cmd(f"set ${name} = 0x{value:x}")
 
     def read_memory(self, addr: int, size: int) -> bytes:
-        """Lê ``size`` bytes da memória emulada em ``addr``.
+        """Read ``size`` bytes of emulated memory at ``addr``.
 
         Parameters:
-            addr (int): Endereço.
-            size (int): Quantidade de bytes.
+            addr (int): Address.
+            size (int): Number of bytes.
 
         Returns:
-            bytes: Os bytes lidos.
+            bytes: The bytes read.
         """
         path = self._temp_path()
         try:
@@ -122,11 +122,11 @@ class GdbBackend(Debugger):
             os.unlink(path)
 
     def write_memory(self, addr: int, data: bytes) -> None:
-        """Escreve ``data`` na memória emulada a partir de ``addr``.
+        """Write ``data`` to emulated memory starting at ``addr``.
 
         Parameters:
-            addr (int): Endereço.
-            data (bytes): Bytes a escrever.
+            addr (int): Address.
+            data (bytes): Bytes to write.
         """
         path = self._temp_path()
         try:
@@ -137,13 +137,13 @@ class GdbBackend(Debugger):
             os.unlink(path)
 
     def set_breakpoint(self, addr: int) -> int:
-        """Cria um breakpoint de código em ``addr``.
+        """Create a code breakpoint at ``addr``.
 
         Parameters:
-            addr (int): Endereço.
+            addr (int): Address.
 
         Returns:
-            int: Número do breakpoint.
+            int: The breakpoint number.
         """
         out = self._cmd(f"break *0x{addr:x}")
         match = re.search(r"Breakpoint (\d+)", out)
@@ -152,20 +152,20 @@ class GdbBackend(Debugger):
         return int(match.group(1))
 
     def set_watchpoint(self, addr: int, kind: str, condition: str | None = None) -> int:
-        """Cria um watchpoint de hardware (``write``/``read``/``access``).
+        """Create a hardware watchpoint (``write``/``read``/``access``).
 
         Parameters:
-            addr (int): Endereço vigiado.
-            kind (str): Tipo de acesso.
-            condition (str | None): Expressão gdb opcional (ex.:
-                ``*(unsigned short*)0x0600F448 != 0``). O gdb só para quando a
-                condição for verdadeira — útil para filtrar por valor.
+            addr (int): Watched address.
+            kind (str): Access kind.
+            condition (str | None): Optional gdb expression (e.g.
+                ``*(unsigned short*)0x0600F448 != 0``). gdb only stops when the
+                condition is true — useful to filter by value.
 
         Returns:
-            int: Número do watchpoint.
+            int: The watchpoint number.
 
         Raises:
-            DebugError: Se o tipo for inválido ou a criação falhar.
+            DebugError: If the kind is invalid or creation fails.
         """
         command = {"write": "watch", "read": "rwatch", "access": "awatch"}.get(kind)
         if command is None:
@@ -180,21 +180,21 @@ class GdbBackend(Debugger):
         return int(match.group(1))
 
     def remove(self, number: int) -> None:
-        """Remove um breakpoint/watchpoint pelo número.
+        """Remove a breakpoint/watchpoint by number.
 
         Parameters:
-            number (int): Número.
+            number (int): The number.
         """
         self._cmd(f"delete {number}")
 
     def continue_(self, timeout: float = 30.0) -> bool:
-        """Retoma a execução e espera a parada.
+        """Resume execution and wait for the stop.
 
         Parameters:
-            timeout (float): Tempo máximo de espera em segundos.
+            timeout (float): Maximum wait time in seconds.
 
         Returns:
-            bool: True se parou; False se estourou o timeout (o alvo é interrompido).
+            bool: True if it stopped; False on timeout (the target is interrupted).
         """
         out = self._cmd("continue", timeout=timeout)
         stopped = out.rstrip().endswith("(gdb)")
@@ -203,19 +203,19 @@ class GdbBackend(Debugger):
         return stopped
 
     def step(self) -> None:
-        """Executa uma instrução."""
+        """Execute one instruction."""
         self._cmd("stepi", timeout=30)
 
     def is_running(self) -> bool:
-        """True se há um `continue` de fundo em execução."""
+        """True if a background `continue` is running."""
         return self._run_thread is not None and self._run_thread.is_alive()
 
     def resume(self) -> None:
-        """Retoma a execução em segundo plano (não bloqueia).
+        """Resume execution in the background (non-blocking).
 
-        Sobe uma thread que roda ``continue``; o alvo segue executando e o
-        chamador pode injetar input (pelo canal de controle) enquanto isso.
-        Use :meth:`wait_stop` para esperar a parada (breakpoint/watchpoint).
+        Spawns a thread that runs ``continue``; the target keeps executing and the
+        caller can inject input (through the control channel) meanwhile.
+        Use :meth:`wait_stop` to wait for the stop (breakpoint/watchpoint).
         """
         if self._proc is None or self._proc.stdin is None:
             raise DebugError("gdb não iniciado (chame connect antes)")
@@ -226,20 +226,20 @@ class GdbBackend(Debugger):
         def _worker() -> None:
             try:
                 self._run_output = self._cmd("continue", timeout=self._run_timeout)
-            except Exception as exc:  # noqa: BLE001 - reportado ao chamador
+            except Exception as exc:  # noqa: BLE001 - reported to the caller
                 self._run_output = f"<erro: {exc}>"
 
         self._run_thread = threading.Thread(target=_worker, daemon=True)
         self._run_thread.start()
 
     def wait_stop(self, timeout: float) -> bool:
-        """Espera o ``continue`` de fundo parar (ou estourar o timeout).
+        """Wait for the background ``continue`` to stop (or time out).
 
         Parameters:
-            timeout (float): Tempo máximo de espera em segundos.
+            timeout (float): Maximum wait time in seconds.
 
         Returns:
-            bool: True se parou; False se ainda está rodando no prazo.
+            bool: True if it stopped; False if still running in time.
         """
         if self._run_thread is None:
             return True
@@ -250,19 +250,19 @@ class GdbBackend(Debugger):
         return True
 
     def interrupt(self) -> None:
-        """Interrompe a execução (funciona com alvo parado ou rodando)."""
+        """Interrupt execution (works with the target stopped or running)."""
         if self._proc is None:
             return
         self._proc.send_signal(signal.SIGINT)
         if self._run_thread is not None and self.is_running():
-            # deixa a thread do `continue` consumir a parada
+            # let the `continue` thread consume the stop
             self._run_thread.join(10)
             self._run_thread = None
         else:
             self._read_until_prompt(timeout=10)
 
     def disconnect(self) -> None:
-        """Desconecta do alvo (detach) — o emulador volta a rodar."""
+        """Disconnect from the target (detach) — the emulator runs again."""
         if self._proc is None:
             return
         if self.is_running():
@@ -271,7 +271,7 @@ class GdbBackend(Debugger):
         self.close()
 
     def close(self) -> None:
-        """Encerra o gdb."""
+        """Shut down gdb."""
         if self._proc is None:
             return
         if self._run_thread is not None and self._run_thread.is_alive():

@@ -1,4 +1,4 @@
-"""Tools MCP de workflows de RE: watchpoints, snapshots e símbolos."""
+"""MCP tools for RE workflows: watchpoints, snapshots and symbols."""
 from ..application.snapshots import SnapshotError
 from ..application.watchpoints import Watchpoints
 from ..domain.symbols import SymbolTable
@@ -8,17 +8,17 @@ from .app import bridge, debug_error, mcp
 
 @mcp.tool()
 def find_writer(addr: int, timeout: float = 30.0, condition: str | None = None) -> dict:
-    """Acha o código que ESCREVE num endereço (watchpoint de escrita + run).
+    """Find the code that WRITES to an address (write watchpoint + run).
 
     Parameters:
-        addr (int): Endereço vigiado.
-        timeout (float): Tempo máximo de espera em segundos.
-        condition (str | None): Expressão gdb opcional; só para quando verdadeira
-            (ex.: ``*(unsigned short*)0x0600F448 != 0`` para pular escritas de 0).
+        addr (int): Watched address.
+        timeout (float): Maximum wait time in seconds.
+        condition (str | None): Optional gdb expression; only stops when true
+            (e.g. ``*(unsigned short*)0x0600F448 != 0`` to skip zero writes).
 
     Returns:
-        dict: ``{"hit": {"pc", "registers"}}`` se parou, ``{"hit": null}`` se não houve
-        escrita no prazo, ou ``{"error": ...}``.
+        dict: ``{"hit": {"pc", "registers"}}`` if it stopped, ``{"hit": null}`` if
+        there was no write in time, or ``{"error": ...}``.
     """
     try:
         hit = Watchpoints(bridge.debugger()).find_write(addr, timeout, condition)
@@ -31,16 +31,16 @@ def find_writer(addr: int, timeout: float = 30.0, condition: str | None = None) 
 
 @mcp.tool()
 def find_reader(addr: int, timeout: float = 30.0, condition: str | None = None) -> dict:
-    """Acha o código que LÊ um endereço (watchpoint de leitura + run).
+    """Find the code that READS an address (read watchpoint + run).
 
     Parameters:
-        addr (int): Endereço vigiado.
-        timeout (float): Tempo máximo de espera em segundos.
-        condition (str | None): Expressão gdb opcional; só para quando verdadeira.
+        addr (int): Watched address.
+        timeout (float): Maximum wait time in seconds.
+        condition (str | None): Optional gdb expression; only stops when true.
 
     Returns:
-        dict: ``{"hit": {"pc", "registers"}}`` se parou, ``{"hit": null}`` se não houve
-        leitura no prazo, ou ``{"error": ...}``.
+        dict: ``{"hit": {"pc", "registers"}}`` if it stopped, ``{"hit": null}`` if
+        there was no read in time, or ``{"error": ...}``.
     """
     try:
         hit = Watchpoints(bridge.debugger()).find_read(addr, timeout, condition)
@@ -53,15 +53,15 @@ def find_reader(addr: int, timeout: float = 30.0, condition: str | None = None) 
 
 @mcp.tool()
 def mem_snapshot(name: str, addr: int, size: int) -> dict:
-    """Guarda um bloco de memória para comparar depois (`state_diff`).
+    """Store a block of memory for comparing later (`state_diff`).
 
     Parameters:
-        name (str): Nome da captura.
-        addr (int): Endereço base.
-        size (int): Tamanho em bytes.
+        name (str): Capture name.
+        addr (int): Base address.
+        size (int): Size in bytes.
 
     Returns:
-        dict: ``{"ok": true, "name": ..., "size": ...}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true, "name": ..., "size": ...}`` or ``{"error": ...}``.
     """
     try:
         snapshot = bridge.snapshots().capture(name, addr, size)
@@ -72,13 +72,13 @@ def mem_snapshot(name: str, addr: int, size: int) -> dict:
 
 @mcp.tool()
 def state_diff(name: str) -> dict:
-    """Compara a memória atual com uma captura (`mem_snapshot`) e lista o que mudou.
+    """Compare current memory with a capture (`mem_snapshot`) and list what changed.
 
     Parameters:
-        name (str): Nome da captura a comparar.
+        name (str): The capture name to compare against.
 
     Returns:
-        dict: ``{"changes": [...], "count": N}`` ou ``{"error": ...}``.
+        dict: ``{"changes": [...], "count": N}`` or ``{"error": ...}``.
     """
     try:
         diff = bridge.snapshots().diff(name)
@@ -92,13 +92,13 @@ def state_diff(name: str) -> dict:
 
 @mcp.tool()
 def symbol_load(path: str) -> dict:
-    """Carrega um mapa de símbolos (`.map`) para resolver endereços.
+    """Load a symbol map (`.map`) to resolve addresses.
 
     Parameters:
-        path (str): Caminho do arquivo `.map` (linhas ``endereço nome``).
+        path (str): Path to the `.map` file (lines ``address name``).
 
     Returns:
-        dict: ``{"ok": true, "count": N}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true, "count": N}`` or ``{"error": ...}``.
     """
     try:
         with open(path, encoding="utf-8") as handle:
@@ -111,13 +111,13 @@ def symbol_load(path: str) -> dict:
 
 @mcp.tool()
 def symbol_lookup(addr: int) -> dict:
-    """Resolve um endereço para o símbolo que o contém.
+    """Resolve an address to the symbol containing it.
 
     Parameters:
-        addr (int): Endereço consultado.
+        addr (int): Address to look up.
 
     Returns:
-        dict: ``{"name": ..., "addr": ...}`` ou ``{"error": ...}``.
+        dict: ``{"name": ..., "addr": ...}`` or ``{"error": ...}``.
     """
     symbol = bridge.symbols().resolve(addr)
     if symbol is None:

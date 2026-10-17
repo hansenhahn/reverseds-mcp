@@ -1,11 +1,11 @@
-"""Configuração do MCP (lida do ambiente)."""
+"""MCP configuration (read from the environment)."""
 import os
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
 class Config:
-    """Configuração do servidor MCP (endereços dos backends)."""
+    """MCP server configuration (backend addresses)."""
 
     control_socket: str
     gdb_path: str
@@ -16,10 +16,10 @@ class Config:
 
     @classmethod
     def from_env(cls) -> "Config":
-        """Lê a configuração das variáveis de ambiente.
+        """Read the configuration from the environment variables.
 
         Returns:
-            Config: A configuração com os defaults aplicados.
+            Config: The configuration with defaults applied.
         """
         return cls(
             control_socket=os.environ.get(
@@ -33,16 +33,16 @@ class Config:
         )
 
     def debug_port(self, core: str) -> int:
-        """Devolve a porta do stub GDB para o core.
+        """Return the GDB stub port for the core.
 
         Parameters:
-            core (str): ``arm9`` ou ``arm7``.
+            core (str): ``arm9`` or ``arm7``.
 
         Returns:
-            int: A porta correspondente.
+            int: The corresponding port.
 
         Raises:
-            ValueError: Se o core for desconhecido.
+            ValueError: If the core is unknown.
         """
         if core == "arm9":
             return self.arm9_port

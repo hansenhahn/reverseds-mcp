@@ -1,18 +1,18 @@
-"""Modelo de input: um passo de sequência e as constantes de máscara."""
+"""Input model: a sequence step and the mask constants."""
 from dataclasses import dataclass
 
-# Teto de sanidade para o tempo total de uma sequência (evita trava acidental).
+# Sanity cap on the total time of a sequence (avoids an accidental hang).
 MAX_TOTAL_MS = 60_000
 
-# Máscara active-low "nada pressionado" (a mesma do canal de controle).
+# Active-low "nothing pressed" mask (the same as the control channel).
 NO_KEY = 0xFFF
 
 
 @dataclass(frozen=True, slots=True)
 class InputStep:
-    """Um passo de input: aperta ``mask`` por ``ms`` e depois espera ``after_ms``.
+    """An input step: press ``mask`` for ``ms``, then wait ``after_ms``.
 
-    ``mask`` None (ou ``NO_KEY``) significa "apenas esperar".
+    ``mask`` None (or ``NO_KEY``) means "just wait".
     """
 
     ms: int

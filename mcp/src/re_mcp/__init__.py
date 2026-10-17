@@ -1,1 +1,1 @@
-"""MCP de engenharia reversa assistida para o melonDS."""
+"""Assisted reverse-engineering MCP for melonDS."""

@@ -1,7 +1,7 @@
-"""Servidor MCP: compõe as tools dos domínios.
+"""MCP server: composes the domain tools.
 
-As tools ficam em módulos por domínio (`control`, `debug`, `cart`, `re`); importá-los
-aqui registra todas no `mcp` (via `@mcp.tool()`).
+The tools live in per-domain modules (`control`, `debug`, `cart`, `re`); importing
+them here registers all of them in `mcp` (via `@mcp.tool()`).
 """
 from .app import bridge, debug_error, error, mcp
 from . import cart, control, debug, re  # noqa: F401

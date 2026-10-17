@@ -1,135 +1,135 @@
-"""Porta do backend de debug (gdb conectado ao stub do melonDS)."""
+"""Port for the debug backend (gdb connected to the melonDS stub)."""
 from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable
 class Debugger(Protocol):
-    """Porta para o backend de debug (gdb conectado ao stub do melonDS)."""
+    """Port for the debug backend (gdb connected to the melonDS stub)."""
 
     def connect(self, core: str) -> None:
-        """Conecta ao core escolhido (``arm9`` ou ``arm7``).
+        """Connect to the chosen core (``arm9`` or ``arm7``).
 
         Parameters:
-            core (str): Core alvo.
+            core (str): Target core.
         """
         ...
 
     def read_register(self, name: str) -> int:
-        """Lê um registrador pelo nome (ex.: ``pc``).
+        """Read a register by name (e.g. ``pc``).
 
         Parameters:
-            name (str): Nome do registrador.
+            name (str): Register name.
 
         Returns:
-            int: Valor do registrador.
+            int: The register value.
         """
         ...
 
     def write_register(self, name: str, value: int) -> None:
-        """Escreve um valor num registrador.
+        """Write a value to a register.
 
         Parameters:
-            name (str): Nome do registrador.
-            value (int): Valor a escrever.
+            name (str): Register name.
+            value (int): Value to write.
         """
         ...
 
     def read_memory(self, addr: int, size: int) -> bytes:
-        """Lê ``size`` bytes da memória emulada no endereço ``addr``.
+        """Read ``size`` bytes of emulated memory at ``addr``.
 
         Parameters:
-            addr (int): Endereço.
-            size (int): Quantidade de bytes.
+            addr (int): Address.
+            size (int): Number of bytes.
 
         Returns:
-            bytes: Os bytes lidos.
+            bytes: The bytes read.
         """
         ...
 
     def write_memory(self, addr: int, data: bytes) -> None:
-        """Escreve ``data`` na memória emulada a partir de ``addr``.
+        """Write ``data`` to emulated memory starting at ``addr``.
 
         Parameters:
-            addr (int): Endereço.
-            data (bytes): Bytes a escrever.
+            addr (int): Address.
+            data (bytes): Bytes to write.
         """
         ...
 
     def set_watchpoint(self, addr: int, kind: str, condition: str | None = None) -> int:
-        """Cria um watchpoint de hardware (``write``, ``read`` ou ``access``).
+        """Create a hardware watchpoint (``write``, ``read`` or ``access``).
 
         Parameters:
-            addr (int): Endereço vigiado.
-            kind (str): Tipo de acesso.
-            condition (str | None): Expressão gdb opcional; o gdb só para quando
-                ela for verdadeira (filtra por valor).
+            addr (int): Watched address.
+            kind (str): Access kind.
+            condition (str | None): Optional gdb expression; gdb only stops when it
+                is true (filters by value).
 
         Returns:
-            int: Número do watchpoint.
+            int: The watchpoint number.
         """
         ...
 
     def set_breakpoint(self, addr: int) -> int:
-        """Cria um breakpoint de código no endereço.
+        """Create a code breakpoint at the address.
 
         Parameters:
-            addr (int): Endereço.
+            addr (int): Address.
 
         Returns:
-            int: Número do breakpoint.
+            int: The breakpoint number.
         """
         ...
 
     def remove(self, number: int) -> None:
-        """Remove um breakpoint/watchpoint pelo número.
+        """Remove a breakpoint/watchpoint by number.
 
         Parameters:
-            number (int): Número do breakpoint/watchpoint.
+            number (int): The breakpoint/watchpoint number.
         """
         ...
 
     def continue_(self, timeout: float = 30.0) -> bool:
-        """Retoma a execução e espera a parada.
+        """Resume execution and wait for the stop.
 
         Parameters:
-            timeout (float): Tempo máximo de espera em segundos.
+            timeout (float): Maximum wait time in seconds.
 
         Returns:
-            bool: True se parou (breakpoint/watchpoint); False se estourou o timeout.
+            bool: True if it stopped (breakpoint/watchpoint); False on timeout.
         """
         ...
 
     def step(self) -> None:
-        """Executa uma instrução."""
+        """Execute one instruction."""
         ...
 
     def interrupt(self) -> None:
-        """Interrompe a execução."""
+        """Interrupt execution."""
         ...
 
     def resume(self) -> None:
-        """Retoma a execução em segundo plano (não bloqueia)."""
+        """Resume execution in the background (non-blocking)."""
         ...
 
     def wait_stop(self, timeout: float) -> bool:
-        """Espera a parada do `continue` de fundo.
+        """Wait for the background ``continue`` to stop.
 
         Parameters:
-            timeout (float): Tempo máximo de espera em segundos.
+            timeout (float): Maximum wait time in seconds.
 
         Returns:
-            bool: True se parou; False se ainda está rodando.
+            bool: True if it stopped; False if still running.
         """
         ...
 
     def is_running(self) -> bool:
-        """True se o alvo está executando (continue de fundo ativo)."""
+        """True if the target is executing (background continue active)."""
         ...
 
     def disconnect(self) -> None:
-        """Desconecta do alvo — o emulador volta a rodar."""
+        """Disconnect from the target — the emulator runs again."""
         ...
 
     def close(self) -> None:
-        """Encerra o backend de debug."""
+        """Shut down the debug backend."""
         ...

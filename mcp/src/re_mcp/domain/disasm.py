@@ -1,7 +1,7 @@
-"""Desassemblagem ARM/Thumb (domínio puro, wrapper do capstone).
+"""ARM/Thumb disassembly (pure domain, capstone wrapper).
 
-Recebe bytes já lidos (a leitura de memória é do adaptador), de modo que o domínio
-fica testável sem o emulador.
+Receives already-read bytes (memory reading is the adapter's responsibility), so the
+domain is testable without the emulator.
 """
 from dataclasses import dataclass
 
@@ -12,7 +12,7 @@ _MODES = {"arm": CS_MODE_ARM, "thumb": CS_MODE_THUMB}
 
 @dataclass(frozen=True, slots=True)
 class Instruction:
-    """Uma instrução desmontada."""
+    """A disassembled instruction."""
 
     address: int
     size: int
@@ -22,24 +22,24 @@ class Instruction:
 
 
 class Disassembler:
-    """Serviço: desmonta ARM/Thumb a partir dos bytes do código."""
+    """Service: disassembles ARM/Thumb from the code bytes."""
 
     def disassemble(
         self, code: bytes, addr: int, mode: str = "arm", count: int | None = None
     ) -> list[Instruction]:
-        """Desmonta ``code`` (a partir de ``addr``) no modo ``arm`` ou ``thumb``.
+        """Disassemble ``code`` (starting at ``addr``) in ``arm`` or ``thumb`` mode.
 
         Parameters:
-            code (bytes): Bytes do código.
-            addr (int): Endereço da primeira instrução.
-            mode (str): ``arm`` ou ``thumb`` (default ``arm``).
-            count (int | None): Máximo de instruções (None = todas as que couberem).
+            code (bytes): The code bytes.
+            addr (int): The address of the first instruction.
+            mode (str): ``arm`` or ``thumb`` (default ``arm``).
+            count (int | None): Maximum number of instructions (None = all that fit).
 
         Returns:
-            list[Instruction]: As instruções, em ordem.
+            list[Instruction]: The instructions, in order.
 
         Raises:
-            ValueError: Se o modo for inválido.
+            ValueError: If the mode is invalid.
         """
         if mode not in _MODES:
             raise ValueError(f"modo inválido: {mode!r} (use 'arm' ou 'thumb')")

@@ -1,4 +1,4 @@
-"""Testes do filesystem nativo do cartucho (FNT/FAT) — sem a ROM real."""
+"""Native cartridge filesystem (FNT/FAT) tests — without the real ROM."""
 import struct
 from pathlib import Path
 
@@ -7,7 +7,7 @@ from re_mcp.infra.ndsrom import NdsRom
 
 
 def _fnt() -> bytes:
-    """FNT sintética: `/a.txt` (id 0) e `/sub/b.bin` (id 1)."""
+    """Synthetic FNT: `/a.txt` (id 0) and `/sub/b.bin` (id 1)."""
     root = struct.pack("<IHH", 16, 0, 1)
     sub = struct.pack("<IHH", 29, 1, 0)
     root_entries = b"\x05a.txt" + b"\x83sub" + struct.pack("<H", 1) + b"\x00"
@@ -16,12 +16,12 @@ def _fnt() -> bytes:
 
 
 def _fat() -> bytes:
-    """FAT sintética: id 0 → [0x100,0x110); id 1 → [0x200,0x208)."""
+    """Synthetic FAT: id 0 → [0x100,0x110); id 1 → [0x200,0x208)."""
     return struct.pack("<II", 0x100, 0x110) + struct.pack("<II", 0x200, 0x208)
 
 
 def _rom(path: Path) -> Path:
-    """Monta uma ROM sintética (header + FNT + FAT + dados + overlay)."""
+    """Build a synthetic ROM (header + FNT + FAT + data + overlay)."""
     fnt, fat = _fnt(), _fat()
     fnt_off, fat_off, ovl_off = 0x60, 0x60 + len(fnt), 0x300
     size = max(ovl_off + 32, 0x210)
@@ -42,7 +42,7 @@ def _rom(path: Path) -> Path:
 
 
 def test_parse_header(tmp_path: Path) -> None:
-    """O header expõe offsets de FNT/FAT e overlays."""
+    """The header exposes FNT/FAT and overlay offsets."""
     header = NdsHeader.from_bytes(_rom(tmp_path / "header.bin").read_bytes()[:0x60])
     assert header.gamecode == "TEST"
     assert header.fnt_offset == 0x60
@@ -51,13 +51,13 @@ def test_parse_header(tmp_path: Path) -> None:
 
 
 def test_fnt_tree() -> None:
-    """A FNT vira a lista de arquivos com id e caminho."""
+    """The FNT becomes the file list with id and path."""
     files = Fnt.from_bytes(_fnt()).files
     assert [(f.file_id, f.path) for f in files] == [(0, "/a.txt"), (1, "/sub/b.bin")]
 
 
 def test_fat_ranges() -> None:
-    """A FAT vira faixas `[start, end)` por id, com `contains`."""
+    """The FAT becomes `[start, end)` ranges per id, with `contains`."""
     fat = Fat.from_bytes(_fat())
     assert (fat.span(0).start, fat.span(0).end, fat.span(0).size) == (0x100, 0x110, 16)
     assert fat.entries[1].end == 0x208
@@ -66,7 +66,7 @@ def test_fat_ranges() -> None:
 
 
 def test_ndsrom_list_and_offset(tmp_path: Path) -> None:
-    """O adaptador lista arquivos e mapeia offset→arquivo."""
+    """The adapter lists files and maps offset→file."""
     rom = NdsRom(str(_rom(tmp_path / "list.bin")))
     assert rom.file_count() == 2
     assert [e.path for e in rom.files()] == ["/a.txt", "/sub/b.bin"]
@@ -76,7 +76,7 @@ def test_ndsrom_list_and_offset(tmp_path: Path) -> None:
 
 
 def test_ndsrom_read_file(tmp_path: Path) -> None:
-    """O adaptador lê o conteúdo pelo caminho."""
+    """The adapter reads the contents by path."""
     rom = NdsRom(str(_rom(tmp_path / "read.bin")))
     assert rom.read_file("/a.txt") == b"A" * 16
     assert rom.read_file("/sub/b.bin") == b"B" * 8

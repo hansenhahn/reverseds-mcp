@@ -1,4 +1,4 @@
-"""Serviço de aplicação: captura e compara blocos de memória (Debugger + FileStore)."""
+"""Application service: capture and compare memory blocks (Debugger + FileStore)."""
 import json
 import os
 
@@ -9,37 +9,37 @@ _SNAP_SUBDIR = "snapshots"
 
 
 class SnapshotError(RuntimeError):
-    """Erro ao capturar ou comparar um snapshot de memória."""
+    """Error capturing or comparing a memory snapshot."""
 
 
 class Snapshots:
-    """Serviço: captura blocos de memória e compara com o estado atual.
+    """Service: capture memory blocks and compare with the current state.
 
-    Persiste cada captura no diretório de saída (porta ``FileStore``) e mantém um
-    cache em memória para comparações rápidas.
+    Persists each capture in the output directory (``FileStore`` port) and keeps an
+    in-memory cache for fast comparisons.
     """
 
     def __init__(self, debugger: Debugger, store: FileStore) -> None:
-        """Monta o serviço.
+        """Build the service.
 
         Parameters:
-            debugger (Debugger): Backend de debug (leitura de memória).
-            store (FileStore): Onde persistir as capturas.
+            debugger (Debugger): Debug backend (memory reads).
+            store (FileStore): Where to persist the captures.
         """
         self._debugger = debugger
         self._store = store
         self._cache: dict[str, Snapshot] = {}
 
     def capture(self, name: str, addr: int, size: int) -> Snapshot:
-        """Lê ``size`` bytes de ``addr``, guarda e persiste sob ``name``.
+        """Read ``size`` bytes at ``addr``, store and persist under ``name``.
 
         Parameters:
-            name (str): Nome da captura (sanitizado).
-            addr (int): Endereço base.
-            size (int): Tamanho em bytes.
+            name (str): Capture name (sanitized).
+            addr (int): Base address.
+            size (int): Size in bytes.
 
         Returns:
-            Snapshot: A captura guardada.
+            Snapshot: The stored capture.
         """
         data = self._debugger.read_memory(addr, size)
         snapshot = Snapshot(addr, data)
@@ -53,16 +53,16 @@ class Snapshots:
         return snapshot
 
     def diff(self, name: str) -> MemoryDiff:
-        """Compara a memória atual com a captura ``name``.
+        """Compare the current memory with the capture ``name``.
 
         Parameters:
-            name (str): Nome da captura.
+            name (str): The capture name.
 
         Returns:
-            MemoryDiff: As mudanças observadas.
+            MemoryDiff: The observed changes.
 
         Raises:
-            SnapshotError: Se a captura não existir (nem em memória, nem em disco).
+            SnapshotError: If the capture does not exist (neither in memory nor on disk).
         """
         safe = os.path.basename(name)
         snapshot = self._cache.get(safe) or self._load(safe)

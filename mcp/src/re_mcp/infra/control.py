@@ -1,4 +1,4 @@
-"""Adaptador do canal de controle do melonDS (JSON-RPC sobre Unix socket)."""
+"""Adapter for the melonDS control channel (JSON-RPC over a Unix socket)."""
 import json
 import socket
 
@@ -6,32 +6,32 @@ from ..application.ports import ControlChannel
 
 
 class ControlError(RuntimeError):
-    """Erro do canal de controle (resposta JSON-RPC de erro ou falha de conexão)."""
+    """Control-channel error (JSON-RPC error response or connection failure)."""
 
 
 class _TransportError(ConnectionError):
-    """Falha de transporte (socket morto); dispara reconexão automática."""
+    """Transport failure (dead socket); triggers automatic reconnection."""
 
 
 class UnixControlChannel(ControlChannel):
-    """Cliente do canal de controle (framing ``Content-Length`` + JSON-RPC 2.0).
+    """Control-channel client (``Content-Length`` framing + JSON-RPC 2.0).
 
-    Suporta o frame binário ``[u32 BE N][bytes]`` que segue respostas/notificações
-    que anunciam um payload binário (ex.: captura de tela).
+    Supports the binary frame ``[u32 BE N][bytes]`` that follows responses/notifications
+    announcing a binary payload (e.g. screen capture).
 
-    A conexão é (re)aberta sob demanda: se o socket morrer (ex.: o melonDS foi
-    reiniciado e o socket Unix foi recriado), a próxima chamada reconecta sozinha.
+    The connection is (re)opened on demand: if the socket dies (e.g. melonDS was
+    restarted and the Unix socket was recreated), the next call reconnects on its own.
     """
 
     def __init__(self, socket_path: str, timeout: float = 5.0) -> None:
-        """Guarda a configuração e abre a conexão inicial.
+        """Store the configuration and open the initial connection.
 
         Parameters:
-            socket_path (str): Caminho do Unix socket do melonDS.
-            timeout (float): Timeout de leitura em segundos.
+            socket_path (str): Path to the melonDS Unix socket.
+            timeout (float): Read timeout in seconds.
 
         Raises:
-            ControlError: Se não for possível conectar.
+            ControlError: If it cannot connect.
         """
         self._path = socket_path
         self._timeout = timeout
@@ -40,10 +40,10 @@ class UnixControlChannel(ControlChannel):
         self._connect()
 
     def _connect(self) -> None:
-        """Abre (ou reabre) a conexão com o socket do canal de controle.
+        """Open (or reopen) the connection to the control-channel socket.
 
         Raises:
-            ControlError: Se não for possível conectar.
+            ControlError: If it cannot connect.
         """
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(self._timeout)
@@ -55,7 +55,7 @@ class UnixControlChannel(ControlChannel):
         self._sock = sock
 
     def _reconnect(self) -> None:
-        """Fecha o socket atual e abre um novo, engolindo falhas."""
+        """Close the current socket and open a new one, swallowing failures."""
         self.close()
         try:
             self._connect()
@@ -63,19 +63,19 @@ class UnixControlChannel(ControlChannel):
             self._sock = None
 
     def call(self, method: str, params: dict | None = None) -> dict:
-        """Chama um método do canal de controle e devolve o ``result``.
+        """Call a control-channel method and return the ``result``.
 
-        Reconecta automaticamente uma vez se o socket estiver morto.
+        Reconnects automatically once if the socket is dead.
 
         Parameters:
-            method (str): Nome do método.
-            params (dict | None): Parâmetros.
+            method (str): Method name.
+            params (dict | None): Parameters.
 
         Returns:
-            dict: O campo ``result`` da resposta (com ``binary.data`` quando houver).
+            dict: The response ``result`` field (with ``binary.data`` when present).
 
         Raises:
-            ControlError: Em erro de resposta JSON-RPC ou de conexão.
+            ControlError: On a JSON-RPC error response or a connection error.
         """
         self._id += 1
         request: dict = {"jsonrpc": "2.0", "id": self._id, "method": method}
@@ -102,13 +102,13 @@ class UnixControlChannel(ControlChannel):
         return message.get("result", {})
 
     def read_message(self, timeout: float) -> dict | None:
-        """Lê a próxima mensagem (resposta ou notificação), ou None no timeout.
+        """Read the next message (response or notification), or None on timeout.
 
         Parameters:
-            timeout (float): Timeout de leitura em segundos.
+            timeout (float): Read timeout in seconds.
 
         Returns:
-            dict | None: A mensagem, ou None se nada chegou no prazo.
+            dict | None: The message, or None if nothing arrived in time.
         """
         if self._sock is None:
             return None
@@ -125,7 +125,7 @@ class UnixControlChannel(ControlChannel):
                 self._sock.settimeout(previous)
 
     def close(self) -> None:
-        """Fecha a conexão."""
+        """Close the connection."""
         if self._sock is not None:
             self._sock.close()
             self._sock = None

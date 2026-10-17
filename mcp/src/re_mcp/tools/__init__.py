@@ -1,1 +1,1 @@
-"""Tools: exposição do domínio como tools MCP."""
+"""Tools: expose the domain as MCP tools."""

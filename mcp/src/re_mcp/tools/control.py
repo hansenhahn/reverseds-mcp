@@ -1,4 +1,4 @@
-"""Tools MCP do canal de controle: ping, input, tela, savestate, execução e trace."""
+"""MCP tools for the control channel: ping, input, screen, savestate, run and trace."""
 import io
 
 from PIL import Image
@@ -15,23 +15,23 @@ _CONTROL_HINT = "Verifique se o melonDS está rodando com o canal de controle ha
 
 @mcp.tool()
 def ping() -> dict:
-    """Verifica a conexão com o canal de controle do melonDS.
+    """Check the connection to the melonDS control channel.
 
     Returns:
-        dict: ``{"pong": true}`` quando o emulador responde, ou ``{"error": ...}``.
+        dict: ``{"pong": true}`` when the emulator responds, or ``{"error": ...}``.
     """
     return control_call("ping")
 
 
 @mcp.tool()
 def health_check() -> dict:
-    """Checa o canal de controle e o debugger, com dicas de diagnóstico.
+    """Check the control channel and the debugger, with diagnostic hints.
 
-    Não cria nem derruba conexões: usa o canal atual e, se o debugger estiver
-    conectado, faz uma leitura de teste do PC.
+    Creates or tears down no connections: uses the current channel and, if the debugger
+    is connected, does a test read of the PC.
 
     Returns:
-        dict: ``{"control": ..., "debug": ...}`` com ``error``/``hint`` por backend.
+        dict: ``{"control": ..., "debug": ...}`` with ``error``/``hint`` per backend.
     """
     out: dict = {}
     try:
@@ -54,51 +54,51 @@ def health_check() -> dict:
 
 @mcp.tool()
 def input_key(mask: int) -> dict:
-    """Define as teclas pressionadas (máscara active-low: 1=solto, 0=pressionado).
+    """Set the pressed keys (active-low mask: 1=released, 0=pressed).
 
     Parameters:
-        mask (int): Máscara (0xFFF = nada; ex.: 0xFF7 = Start).
+        mask (int): Mask (0xFFF = none; e.g. 0xFF7 = Start).
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     return control_call("input.key", {"mask": mask})
 
 
 @mcp.tool()
 def input_touch(x: int, y: int) -> dict:
-    """Pressiona a tela de toque em (x, y).
+    """Press the touch screen at (x, y).
 
     Parameters:
-        x (int): Coordenada x.
-        y (int): Coordenada y.
+        x (int): X coordinate.
+        y (int): Y coordinate.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     return control_call("input.touch", {"x": x, "y": y})
 
 
 @mcp.tool()
 def input_release() -> dict:
-    """Solta todas as teclas e a tela de toque.
+    """Release all keys and the touch screen.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     return control_call("input.release")
 
 
 @mcp.tool()
 def input_tap(mask: int, ms: int = 100) -> dict:
-    """Aperta a(s) tecla(s) da máscara por ``ms`` e solta (macro de input).
+    """Press the mask key(s) for ``ms`` and release (input macro).
 
     Parameters:
-        mask (int): Máscara active-low (ex.: ``0xFF7`` = Start).
-        ms (int): Duração do toque em milissegundos.
+        mask (int): Active-low mask (e.g. ``0xFF7`` = Start).
+        ms (int): Tap duration in milliseconds.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     try:
         channel = bridge.control()
@@ -113,16 +113,16 @@ def input_tap(mask: int, ms: int = 100) -> dict:
 
 @mcp.tool()
 def input_sequence(steps: list[dict]) -> dict:
-    """Executa uma sequência de passos ``{mask, ms, after_ms}`` (macro de input).
+    """Run a sequence of ``{mask, ms, after_ms}`` steps (input macro).
 
-    Cada passo aperta ``mask``, espera ``ms``, solta e espera ``after_ms``. Passo
-    sem ``mask`` apenas espera. O input é solto ao final (mesmo em erro).
+    Each step presses ``mask``, waits ``ms``, releases and waits ``after_ms``. A step
+    without ``mask`` just waits. The input is released at the end (even on error).
 
     Parameters:
-        steps (list[dict]): Lista ordenada de passos.
+        steps (list[dict]): Ordered list of steps.
 
     Returns:
-        dict: ``{"ok": true, "steps": N}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true, "steps": N}`` or ``{"error": ...}``.
     """
     try:
         channel = bridge.control()
@@ -145,27 +145,27 @@ def input_sequence(steps: list[dict]) -> dict:
 
 @mcp.tool()
 def input_merge(enabled: bool = True) -> dict:
-    """Liga/desliga a mesclagem do input do agente com o do host.
+    """Enable/disable merging the agent's input with the host's.
 
     Parameters:
-        enabled (bool): True mescla (humano + agente); False deixa o agente sozinho.
+        enabled (bool): True merges (human + agent); False leaves the agent alone.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     return control_call("input.merge", {"enabled": enabled})
 
 
 @mcp.tool()
 def screen_capture(screens: str = "both", format: str = "rgba8") -> dict:
-    """Captura a(s) tela(s) sob demanda e salva como PNG.
+    """Capture the screen(s) on demand and save them as PNG.
 
     Parameters:
-        screens (str): ``top``, ``bottom`` ou ``both``.
-        format (str): ``rgba8`` ou ``bgra8``.
+        screens (str): ``top``, ``bottom`` or ``both``.
+        format (str): ``rgba8`` or ``bgra8``.
 
     Returns:
-        dict: ``{"paths": [...]}`` com os PNGs salvos, ou ``{"error": ...}``.
+        dict: ``{"paths": [...]}`` with the saved PNGs, or ``{"error": ...}``.
     """
     result = control_call("screen.capture", {"screens": screens, "format": format})
     if "error" in result:
@@ -197,73 +197,73 @@ def screen_capture(screens: str = "both", format: str = "rgba8") -> dict:
 
 @mcp.tool()
 def savestate_save(slot: int = 0) -> dict:
-    """Salva o estado da emulação num slot.
+    """Save the emulation state to a slot.
 
     Parameters:
-        slot (int): Identificador do slot.
+        slot (int): Slot identifier.
 
     Returns:
-        dict: ``{"ok": true, "path": ...}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true, "path": ...}`` or ``{"error": ...}``.
     """
     return control_call("savestate.save", {"slot": slot})
 
 
 @mcp.tool()
 def savestate_load(slot: int = 0) -> dict:
-    """Carrega o estado da emulação de um slot.
+    """Load the emulation state from a slot.
 
     Parameters:
-        slot (int): Identificador do slot.
+        slot (int): Slot identifier.
 
     Returns:
-        dict: ``{"ok": true, "path": ...}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true, "path": ...}`` or ``{"error": ...}``.
     """
     return control_call("savestate.load", {"slot": slot})
 
 
 @mcp.tool()
 def emu_pause() -> dict:
-    """Pausa a execução.
+    """Pause execution.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     return control_call("emu.pause")
 
 
 @mcp.tool()
 def emu_resume() -> dict:
-    """Retoma a execução.
+    """Resume execution.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     return control_call("emu.resume")
 
 
 @mcp.tool()
 def cart_trace_start(batch: int = 256, timeout_ms: int = 100) -> dict:
-    """Inicia o trace de leitura do cartucho (subscreve).
+    """Start the cartridge read trace (overwrites any previous one).
 
     Parameters:
-        batch (int): Itens por lote.
-        timeout_ms (int): Timeout do lote em milissegundos.
+        batch (int): Items per batch.
+        timeout_ms (int): Batch timeout in milliseconds.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     return control_call("cart.trace.start", {"batch": batch, "timeout_ms": timeout_ms})
 
 
 @mcp.tool()
 def cart_trace_read(seconds: float = 2.0) -> dict:
-    """Coleta as leituras do cartucho por um período (lotes ``event.cart``).
+    """Collect the cartridge reads for a period (``event.cart`` batches).
 
     Parameters:
-        seconds (float): Duração da coleta em segundos.
+        seconds (float): Collection duration in seconds.
 
     Returns:
-        dict: ``{"count": N, "reads": [...]}`` ou ``{"error": ...}``.
+        dict: ``{"count": N, "reads": [...]}`` or ``{"error": ...}``.
     """
     try:
         channel = bridge.control()
@@ -275,9 +275,9 @@ def cart_trace_read(seconds: float = 2.0) -> dict:
 
 @mcp.tool()
 def cart_trace_stop() -> dict:
-    """Para o trace de leitura do cartucho.
+    """Stop the cartridge read trace.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     return control_call("cart.trace.stop")

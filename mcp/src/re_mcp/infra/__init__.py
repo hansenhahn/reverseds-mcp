@@ -1,1 +1,1 @@
-"""Infra: adaptadores (canal de controle, gdb, NitroFS, símbolos)."""
+"""Infra: adapters (control channel, gdb, ROM filesystem, artifact storage)."""
