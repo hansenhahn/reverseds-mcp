@@ -12,6 +12,7 @@ class Config:
     arm9_port: int
     arm7_port: int
     rom_path: str | None
+    out_dir: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -28,6 +29,7 @@ class Config:
             arm9_port=int(os.environ.get("RE_MCP_ARM9_PORT", "3333")),
             arm7_port=int(os.environ.get("RE_MCP_ARM7_PORT", "3334")),
             rom_path=os.environ.get("RE_MCP_ROM") or None,
+            out_dir=os.environ.get("RE_MCP_OUT_DIR", "/tmp/re_mcp"),
         )
 
     def debug_port(self, core: str) -> int:

@@ -50,15 +50,19 @@ context: |
   Aplicam-se ao projeto do MCP (servidor em reverse-ds). Independentes das
   diretrizes do melonDS acima (que são C++). Não há UI, então MVC não se aplica.
 
-  - **Hexagonal (ports & adapters)**: o domínio (workflows de RE e tipos) NÃO
-    depende de I/O. As bordas são adaptadores atrás de "portas" (interfaces),
-    usando `typing.Protocol` (`@runtime_checkable` quando preciso) — NÃO ABCs
-    (ABC só para comportamento compartilhado/hierarquia, nunca como contrato):
-    cliente do canal de controle (socket), cliente do gdb, parser NitroFS (FAT/FNT),
-    carregador de símbolos (.map) e o transporte MCP. O domínio depende de
-    abstrações, não de implementações concretas. As portas ficam em
-    **`domain/ports/`** (subpacote, um módulo por domínio: `control`, `debug`,
-    `cartfs`, ...), reexportadas em `domain/ports/__init__.py`; os adaptadores em
+  - **Camadas (MCP)**: `domain/` = modelo puro + serviços de domínio (sem portas);
+    `application/` = serviços/casos de uso que **orquestram portas** + as portas em
+    `application/ports/`; `infra/` = adaptadores; `tools/` = transporte MCP.
+    Comportamento de **orquestração** mora em `application/`, nunca em `domain/`
+    nem em `tools/`; `domain/` não importa portas nem I/O.
+  - **Hexagonal (ports & adapters)**: o domínio (tipos) NÃO depende de I/O. As bordas
+    são adaptadores atrás de "portas" (interfaces), usando `typing.Protocol`
+    (`@runtime_checkable` quando preciso) — NÃO ABCs (ABC só para comportamento
+    compartilhado/hierarquia, nunca como contrato): cliente do canal de controle
+    (socket), cliente do gdb, parser NitroFS (FAT/FNT), carregador de símbolos (.map)
+    e o armazenamento de artefatos. As portas ficam em **`application/ports/`**
+    (subpacote, um módulo por porta: `control`, `debug`, `cartfs`, `overlays`,
+    `files`), reexportadas em `application/ports/__init__.py`; os adaptadores em
     `infra/` herdam a porta explicitamente (ex.: `class GdbBackend(Debugger)`).
   - **Contratos estáticos (pyright)**: as portas são `Protocol` e os contratos são
     verificados **estaticamente** com **pyright** (`mcp/pyrightconfig.json`), não em
@@ -66,10 +70,11 @@ context: |
     teste também precisam satisfazer o `Protocol`.
   - **SOLID**: responsabilidade única por classe/módulo; inversão de dependência
     nas portas.
-  - **Domínios bem separados**: um módulo por domínio — `control` (canal de
-    controle), `debug` (gdb), `cartfs` (NitroFS/FAT/FNT), `symbols`, `workflows`
-    (RE), `bridge` (conexões/ciclo de vida) e `mcp` (exposição de tools). Cada
-    domínio expõe uma interface clara; sem acoplamento cruzado confuso.
+  - **Domínios bem separados**: um módulo por domínio — `cartfs` (NitroFS/FAT/FNT),
+    `overlays` (y9/y7), `symbols`, `debug`, `input`, `disasm`; os casos de uso por
+    domínio em `application/` (`watchpoints`, `snapshots`, `input`, `cart_trace`);
+    `bridge` (composição/ciclo de vida) e `tools/` (exposição MCP). Cada domínio expõe
+    uma interface clara; sem acoplamento cruzado confuso.
   - **Dados tipados**: priorizar `@dataclass(frozen=True, slots=True)` (e `StrEnum`)
     para os tipos do domínio (ex.: `CartRead`, `Symbol`, `FileEntry`,
     `WatchpointHit`) em vez de dicts/tuplas soltos. Comportamento em objetos/serviços;

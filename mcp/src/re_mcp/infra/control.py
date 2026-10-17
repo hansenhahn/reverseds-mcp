@@ -2,7 +2,7 @@
 import json
 import socket
 
-from ..domain.ports import ControlChannel
+from ..application.ports import ControlChannel
 
 
 class ControlError(RuntimeError):
