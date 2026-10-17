@@ -7,27 +7,23 @@ vblank (com o framebuffer já composto), para congelar e observar um frame exato
 
 ### Requirement: Avanço determinístico de quadros
 
-O sistema SHALL permitir avançar exatamente `N` quadros e parar, com o framebuffer do
-último quadro já composto.
+O sistema SHALL permitir pausar, avançar exatamente `N` quadros (`N ≥ 1`) e parar, com o
+framebuffer do último quadro já composto. A operação SHALL bloquear até os `N` quadros
+terem sido emulados.
 
 #### Scenario: Avançar N quadros
 - **WHEN** o agente pede para avançar `N` quadros
 - **THEN** a emulação avança exatamente `N` quadros e para no vblank, com o framebuffer composto
 
-### Requirement: Parar no próximo quadro
-
-O sistema SHALL permitir agendar uma parada no fim do quadro corrente, para quando a
-emulação já está rodando.
-
-#### Scenario: Agendar parada
-- **WHEN** o agente agenda parar no próximo quadro
-- **THEN** a emulação para ao término do quadro corrente, no vblank
+#### Scenario: Termina pausado
+- **WHEN** a operação conclui
+- **THEN** a emulação está pausada (não avança até um `emu.resume`)
 
 ### Requirement: Execução na thread de emulação
 
-As operações de controle de frame SHALL ser aplicadas na thread de emulação, e NÃO SHALL
-adicionar carga por quadro quando não há parada agendada.
+A operação SHALL ser aplicada na thread de emulação, e NÃO SHALL adicionar carga por
+quadro quando não há avanço em andamento.
 
 #### Scenario: Sem uso, sem custo
-- **WHEN** nenhuma parada está agendada
+- **WHEN** nenhum avanço está em andamento
 - **THEN** o laço de quadro não executa trabalho adicional
