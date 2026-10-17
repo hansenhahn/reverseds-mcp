@@ -15,3 +15,7 @@ __pycache__/
 
 # Editor
 .opencode/
+
+# Documentação de sessão/use-case (temporário)
+docs/roadmap/
+docs/use-case/
