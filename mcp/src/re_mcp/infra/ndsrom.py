@@ -1,7 +1,7 @@
-"""Filesystem e overlays nativos de uma ROM de NDS (substitui o `ndstool`).
+"""Native NDS ROM filesystem and overlays (replaces `ndstool`).
 
-Abre a ROM, lê o header e as tabelas FNT/FAT/overlay diretamente do arquivo, e
-delega a interpretação ao domínio (`NdsFs`, `OverlayTable`). Sem ferramenta externa.
+Opens the ROM, reads the header and the FNT/FAT/overlay tables directly from the file,
+and delegates parsing to the domain (`NdsFs`, `OverlayTable`). No external tool.
 """
 from typing import BinaryIO
 
@@ -14,20 +14,20 @@ _CORES = ("arm9", "arm7")
 
 
 class NdsRomError(RuntimeError):
-    """Erro ao abrir ou interpretar a ROM."""
+    """Error opening or parsing the ROM."""
 
 
 class NdsRom(CartFs, Overlays):
-    """Filesystem e overlays de uma ROM de NDS, lidos diretamente do arquivo."""
+    """Filesystem and overlays of an NDS ROM, read directly from the file."""
 
     def __init__(self, rom_path: str) -> None:
-        """Abre a ROM e interpreta header, FNT/FAT e as tabelas de overlay.
+        """Open the ROM and parse the header, FNT/FAT and the overlay tables.
 
         Parameters:
-            rom_path (str): Caminho da ROM.
+            rom_path (str): ROM path.
 
         Raises:
-            NdsRomError: Se a ROM não puder ser aberta.
+            NdsRomError: If the ROM cannot be opened.
         """
         self._path = rom_path
         self._fh: BinaryIO
@@ -81,5 +81,5 @@ class NdsRom(CartFs, Overlays):
         return table.for_address(addr) if table is not None else None
 
     def close(self) -> None:
-        """Fecha o arquivo da ROM."""
+        """Close the ROM file."""
         self._fh.close()

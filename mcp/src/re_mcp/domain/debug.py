@@ -1,10 +1,10 @@
-"""Modelo de depuração: alvos de watchpoint e diff de memória (puro)."""
+"""Debug model: watchpoint hits, snapshots and memory diff (pure)."""
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
 class WatchpointHit:
-    """Parada de watchpoint: PC e contexto de registradores."""
+    """A watchpoint stop: PC and register context."""
 
     pc: int
     registers: dict[str, int]
@@ -12,7 +12,7 @@ class WatchpointHit:
 
 @dataclass(frozen=True, slots=True)
 class Snapshot:
-    """Um bloco de memória guardado, com seu endereço base."""
+    """A stored block of memory, with its base address."""
 
     addr: int
     data: bytes
@@ -20,7 +20,7 @@ class Snapshot:
 
 @dataclass(frozen=True, slots=True)
 class MemoryChange:
-    """Um byte que mudou entre dois estados."""
+    """A byte that changed between two states."""
 
     addr: int
     old: int
@@ -29,21 +29,21 @@ class MemoryChange:
 
 @dataclass(frozen=True, slots=True)
 class MemoryDiff:
-    """Comparação de dois blocos de memória de mesmo tamanho."""
+    """Comparison of two memory blocks of the same size."""
 
     changes: tuple[MemoryChange, ...]
 
     @classmethod
     def between(cls, before: bytes, after: bytes, base: int) -> "MemoryDiff":
-        """Compara dois blocos e lista os bytes que mudaram.
+        """Compare two blocks and list the bytes that changed.
 
         Parameters:
-            before (bytes): Bloco anterior.
-            after (bytes): Bloco atual.
-            base (int): Endereço base do bloco.
+            before (bytes): The previous block.
+            after (bytes): The current block.
+            base (int): The base address of the block.
 
         Returns:
-            MemoryDiff: As mudanças ``(addr, old, new)``.
+            MemoryDiff: The changes ``(addr, old, new)``.
         """
         return cls(
             tuple(

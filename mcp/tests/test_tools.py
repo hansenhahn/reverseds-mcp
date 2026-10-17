@@ -1,4 +1,4 @@
-"""Testes do servidor MCP (descoberta de tools e ponte)."""
+"""MCP server tests (tool discovery and bridge)."""
 import asyncio
 import sys
 
@@ -16,20 +16,20 @@ async def _list_tools() -> list[str]:
 
 
 def test_lists_ping_tool() -> None:
-    """O servidor MCP expõe a tool `ping`."""
+    """The MCP server exposes the `ping` tool."""
     names = asyncio.run(_list_tools())
     assert "ping" in names
 
 
 def test_lists_p0_tools() -> None:
-    """As tools do roadmap P0 estão expostas (run não-bloqueante + dump em arquivo)."""
+    """The roadmap P0 tools are exposed (non-blocking run + file dump)."""
     names = asyncio.run(_list_tools())
     for tool in ("debug_resume", "debug_wait", "mem_dump_file"):
         assert tool in names
 
 
 def test_lists_p1_tools() -> None:
-    """As tools dos changes P1 (input macros, disassemble, health-check) estão expostas."""
+    """The P1 change tools (input macros, disassemble, health-check) are exposed."""
     names = asyncio.run(_list_tools())
     for tool in ("input_tap", "input_sequence", "disassemble", "health_check"):
         assert tool in names

@@ -1,10 +1,10 @@
-"""Testes dos serviços de depuração (domínio, com um Debugger fake)."""
+"""Debug service tests (domain, with a fake Debugger)."""
 from re_mcp.application.watchpoints import Watchpoints
 from re_mcp.domain.debug import MemoryDiff
 
 
 class FakeDebugger:
-    """Debugger fake que satisfaz a porta `Debugger`."""
+    """Fake Debugger that satisfies the `Debugger` port."""
 
     def __init__(self) -> None:
         self.removed: int | None = None
@@ -41,14 +41,14 @@ class FakeDebugger:
 
 
 def test_memory_diff_lists_changed_bytes() -> None:
-    """`MemoryDiff` lista os bytes que mudaram, com endereço absoluto."""
+    """`MemoryDiff` lists the bytes that changed, with absolute address."""
     diff = MemoryDiff.between(b"\x01\x02\x03", b"\x01\x09\x03", 0x10)
     assert len(diff) == 1
     assert (diff.changes[0].addr, diff.changes[0].old, diff.changes[0].new) == (0x11, 2, 9)
 
 
 def test_find_write_captures_pc_and_removes_watchpoint() -> None:
-    """`find_write` captura o PC no hit e sempre remove o watchpoint."""
+    """`find_write` captures the PC on the hit and always removes the watchpoint."""
     debugger = FakeDebugger()
     hit = Watchpoints(debugger).find_write(0x0600F448)
     assert hit is not None

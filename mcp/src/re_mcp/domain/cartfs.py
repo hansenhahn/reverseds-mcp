@@ -1,8 +1,8 @@
-"""Filesystem do cartucho (NitroFS): entidades e agregado, sem I/O.
+"""Cartridge filesystem (NitroFS): entities and aggregate, without I/O.
 
-Interpreta o header da ROM e as tabelas FNT/FAT (formato conforme o `ndstool`,
-`ndsextract.cpp`). A leitura do arquivo da ROM é responsabilidade do adaptador
-(`infra/ndsrom.py`); aqui só há estrutura e comportamento.
+Parses the ROM header and the FNT/FAT tables (format per `ndstool`,
+`ndsextract.cpp`). Reading the ROM file is the adapter's responsibility
+(`infra/ndsrom.py`); here there is only structure and behavior.
 """
 import struct
 from dataclasses import dataclass
@@ -20,7 +20,7 @@ def _u32(data: bytes, offset: int) -> int:
 
 @dataclass(frozen=True, slots=True)
 class NdsHeader:
-    """Header da ROM: onde ficam a FNT/FAT e as tabelas de overlay."""
+    """ROM header: where the FNT/FAT and the overlay tables live."""
 
     gamecode: str
     fnt_offset: int
@@ -34,16 +34,16 @@ class NdsHeader:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "NdsHeader":
-        """Interpreta o header a partir dos primeiros bytes da ROM.
+        """Parse the header from the first bytes of the ROM.
 
         Parameters:
-            data (bytes): Os primeiros bytes da ROM (pelo menos 0x60).
+            data (bytes): The first bytes of the ROM (at least 0x60).
 
         Returns:
-            NdsHeader: O header interpretado.
+            NdsHeader: The parsed header.
 
         Raises:
-            ValueError: Se `data` for menor que o header mínimo.
+            ValueError: If `data` is shorter than the minimum header.
         """
         if len(data) < _HEADER_SIZE:
             raise ValueError("header da ROM truncado")
@@ -62,31 +62,31 @@ class NdsHeader:
 
 @dataclass(frozen=True, slots=True)
 class FatEntry:
-    """Faixa ``[start, end)`` de um arquivo na ROM."""
+    """A file's ``[start, end)`` range in the ROM."""
 
     start: int
     end: int
 
     @property
     def size(self) -> int:
-        """O tamanho do arquivo em bytes."""
+        """The file size, in bytes."""
         return self.end - self.start
 
     def contains(self, offset: int) -> bool:
-        """Se ``offset`` cai dentro da faixa.
+        """Whether ``offset`` falls inside the range.
 
         Parameters:
-            offset (int): Offset na ROM.
+            offset (int): Offset in the ROM.
 
         Returns:
-            bool: True se ``start <= offset < end``.
+            bool: True if ``start <= offset < end``.
         """
         return self.start <= offset < self.end
 
 
 @dataclass(frozen=True, slots=True)
 class FileEntry:
-    """Um arquivo do filesystem: id na FAT e caminho dentro da ROM."""
+    """A filesystem file: its id in the FAT and its path inside the ROM."""
 
     file_id: int
     path: str
@@ -94,19 +94,19 @@ class FileEntry:
 
 @dataclass(frozen=True, slots=True)
 class Fat:
-    """A FAT: uma faixa por id de arquivo."""
+    """The FAT: one range per file id."""
 
     entries: tuple[FatEntry, ...]
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "Fat":
-        """Interpreta a FAT.
+        """Parse the FAT.
 
         Parameters:
-            data (bytes): Conteúdo da FAT.
+            data (bytes): The FAT contents.
 
         Returns:
-            Fat: As faixas, indexadas pelo id do arquivo.
+            Fat: The ranges, indexed by file id.
         """
         return cls(
             entries=tuple(
@@ -116,16 +116,16 @@ class Fat:
         )
 
     def span(self, file_id: int) -> FatEntry:
-        """A faixa de um arquivo pelo id.
+        """The range of a file, by id.
 
         Parameters:
-            file_id (int): Id na FAT.
+            file_id (int): The id in the FAT.
 
         Returns:
-            FatEntry: A faixa do arquivo.
+            FatEntry: The file's range.
 
         Raises:
-            KeyError: Se o id não existir na FAT.
+            KeyError: If the id does not exist in the FAT.
         """
         if file_id >= len(self.entries):
             raise KeyError(file_id)
@@ -134,19 +134,19 @@ class Fat:
 
 @dataclass(frozen=True, slots=True)
 class Fnt:
-    """A FNT: os arquivos do filesystem (caminho + id na FAT)."""
+    """The FNT: the filesystem files (path + FAT id)."""
 
     files: tuple[FileEntry, ...]
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "Fnt":
-        """Interpreta a FNT, percorrendo a árvore de diretórios.
+        """Parse the FNT, walking the directory tree.
 
         Parameters:
-            data (bytes): Conteúdo da FNT.
+            data (bytes): The FNT contents.
 
         Returns:
-            Fnt: Os arquivos, com id (na FAT) e caminho.
+            Fnt: The files, with their id (in the FAT) and path.
         """
         out: list[FileEntry] = []
 
@@ -175,7 +175,7 @@ class Fnt:
 
 
 class NdsFs:
-    """Agregado: o filesystem da ROM (FNT + FAT), com consulta por caminho/offset."""
+    """Aggregate: the ROM filesystem (FNT + FAT), with lookup by path/offset."""
 
     def __init__(self, fnt: Fnt, fat: Fat) -> None:
         self._fnt = fnt
@@ -184,45 +184,45 @@ class NdsFs:
 
     @classmethod
     def from_bytes(cls, fnt: bytes, fat: bytes) -> "NdsFs":
-        """Monta o filesystem a partir das tabelas FNT e FAT.
+        """Build the filesystem from the FNT and FAT tables.
 
         Parameters:
-            fnt (bytes): Conteúdo da FNT.
-            fat (bytes): Conteúdo da FAT.
+            fnt (bytes): The FNT contents.
+            fat (bytes): The FAT contents.
 
         Returns:
-            NdsFs: O filesystem.
+            NdsFs: The filesystem.
         """
         return cls(Fnt.from_bytes(fnt), Fat.from_bytes(fat))
 
     def file_count(self) -> int:
-        """O número de arquivos."""
+        """The number of files."""
         return len(self._fnt.files)
 
     def files(self) -> list[FileEntry]:
-        """Os arquivos (id e caminho)."""
+        """The files (id and path)."""
         return list(self._fnt.files)
 
     def span(self, path: str) -> FatEntry | None:
-        """A faixa de um arquivo pelo caminho, ou None se não existir.
+        """The range of a file by path, or None if it does not exist.
 
         Parameters:
-            path (str): Caminho do arquivo dentro da ROM.
+            path (str): The file path inside the ROM.
 
         Returns:
-            FatEntry | None: A faixa, ou None.
+            FatEntry | None: The range, or None.
         """
         entry = self._by_path.get(path)
         return self._fat.span(entry.file_id) if entry is not None else None
 
     def file_for_offset(self, offset: int) -> str | None:
-        """O caminho do arquivo que contém ``offset``, ou None.
+        """The path of the file containing ``offset``, or None.
 
         Parameters:
-            offset (int): Offset na ROM.
+            offset (int): Offset in the ROM.
 
         Returns:
-            str | None: O caminho, ou None.
+            str | None: The path, or None.
         """
         for entry in self._fnt.files:
             if self._fat.span(entry.file_id).contains(offset):

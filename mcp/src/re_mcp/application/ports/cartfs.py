@@ -1,4 +1,4 @@
-"""Porta do filesystem de cartucho (NitroFS) da ROM."""
+"""Port for the cartridge filesystem (NitroFS) of the ROM."""
 from typing import Protocol, runtime_checkable
 
 from ...domain.cartfs import FileEntry
@@ -6,45 +6,45 @@ from ...domain.cartfs import FileEntry
 
 @runtime_checkable
 class CartFs(Protocol):
-    """Porta para o filesystem da ROM (NitroFS): lista, mapeia e lê arquivos."""
+    """Port for the ROM filesystem (NitroFS): lists, maps and reads files."""
 
     def file_count(self) -> int:
-        """O número de arquivos listados.
+        """The number of listed files.
 
         Returns:
-            int: Quantidade de arquivos.
+            int: Number of files.
         """
         ...
 
     def files(self) -> list[FileEntry]:
-        """Lista os arquivos do filesystem.
+        """List the filesystem files.
 
         Returns:
-            list[FileEntry]: Arquivos com id e caminho.
+            list[FileEntry]: Files with id and path.
         """
         ...
 
     def file_for_offset(self, offset: int) -> str | None:
-        """Devolve o arquivo que contém ``offset`` (ou None).
+        """Return the file containing ``offset`` (or None).
 
         Parameters:
-            offset (int): Offset na ROM.
+            offset (int): Offset in the ROM.
 
         Returns:
-            str | None: O caminho do arquivo, ou None.
+            str | None: The file path, or None.
         """
         ...
 
     def read_file(self, path: str) -> bytes:
-        """Lê o conteúdo de um arquivo pelo caminho.
+        """Read a file's contents by path.
 
         Parameters:
-            path (str): Caminho do arquivo dentro da ROM.
+            path (str): The file path inside the ROM.
 
         Returns:
-            bytes: O conteúdo do arquivo.
+            bytes: The file contents.
 
         Raises:
-            NdsRomError: Se o arquivo não existir.
+            NdsRomError: If the file does not exist.
         """
         ...

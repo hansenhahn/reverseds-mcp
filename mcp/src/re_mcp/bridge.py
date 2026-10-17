@@ -1,7 +1,7 @@
-"""Ponte: mantém os backends (canal de controle, gdb, ROM) e o ciclo de vida.
+"""Bridge: holds the backends (control channel, gdb, ROM) and the lifecycle.
 
-Composition root: fiação lazy dos adaptadores e dos objetos de domínio. A conexão
-só é aberta na primeira chamada, para o MCP subir mesmo sem emulador rodando.
+Composition root: lazy wiring of the adapters and the domain objects. The connection
+is only opened on the first call, so the MCP starts even without the emulator running.
 """
 from .config import Config
 from .application.ports import CartFs, ControlChannel, Debugger, FileStore, Overlays
@@ -14,13 +14,13 @@ from .infra.ndsrom import NdsRom, NdsRomError
 
 
 class Bridge:
-    """Acesso lazy aos backends do emulador e aos objetos de domínio."""
+    """Lazy access to the emulator backends and the domain objects."""
 
     def __init__(self, config: Config) -> None:
-        """Guarda a configuração.
+        """Store the configuration.
 
         Parameters:
-            config (Config): Configuração dos backends.
+            config (Config): Backend configuration.
         """
         self._config = config
         self._control: ControlChannel | None = None
@@ -32,55 +32,55 @@ class Bridge:
 
     @property
     def config(self) -> Config:
-        """A configuração em uso."""
+        """The configuration in use."""
         return self._config
 
     def symbols(self) -> SymbolTable:
-        """A tabela de símbolos carregada (via `symbol_load`)."""
+        """The loaded symbol table (via `symbol_load`)."""
         return self._symbols
 
     def set_symbols(self, symbols: SymbolTable) -> None:
-        """Substitui a tabela de símbolos.
+        """Replace the symbol table.
 
         Parameters:
-            symbols (SymbolTable): A nova tabela.
+            symbols (SymbolTable): The new table.
         """
         self._symbols = symbols
 
     def snapshots(self) -> Snapshots:
-        """Devolve o serviço de capturas de memória (`mem_snapshot`/`state_diff`)."""
+        """Return the memory-snapshot service (`mem_snapshot`/`state_diff`)."""
         if self._snapshots is None:
             self._snapshots = Snapshots(self.debugger(), self.files())
         return self._snapshots
 
     def files(self) -> FileStore:
-        """Devolve o armazenamento de artefatos (diretório de saída).
+        """Return the artifact storage (output directory).
 
         Returns:
-            FileStore: O armazenamento de saída (`RE_MCP_OUT_DIR`).
+            FileStore: The output storage (`RE_MCP_OUT_DIR`).
         """
         if self._files is None:
             self._files = OutDir(self._config.out_dir)
         return self._files
 
     def control(self) -> ControlChannel:
-        """Devolve o canal de controle, abrindo-o na primeira chamada.
+        """Return the control channel, opening it on the first call.
 
         Returns:
-            ControlChannel: O canal conectado.
+            ControlChannel: The connected channel.
 
         Raises:
-            ControlError: Se não for possível conectar.
+            ControlError: If it cannot connect.
         """
         if self._control is None:
             self._control = UnixControlChannel(self._config.control_socket)
         return self._control
 
     def debugger(self) -> Debugger:
-        """Devolve o backend de debug, criando-o na primeira chamada.
+        """Return the debug backend, creating it on the first call.
 
         Returns:
-            Debugger: O backend (gdb), ainda não conectado.
+            Debugger: The backend (gdb), not connected yet.
         """
         if self._debugger is None:
             self._debugger = GdbBackend(
@@ -98,29 +98,29 @@ class Bridge:
         return self._rom
 
     def cartfs(self) -> CartFs:
-        """Devolve o filesystem da ROM, abrindo-a na primeira chamada.
+        """Return the ROM filesystem, opening it on the first call.
 
         Returns:
-            CartFs: O filesystem da ROM.
+            CartFs: The ROM filesystem.
 
         Raises:
-            NdsRomError: Se a ROM não estiver configurada ou não puder ser interpretada.
+            NdsRomError: If the ROM is not configured or cannot be parsed.
         """
         return self._rom_instance()
 
     def overlays(self) -> Overlays:
-        """Devolve a interpretação de overlays da ROM, abrindo-a na primeira chamada.
+        """Return the ROM overlay parsing, opening it on the first call.
 
         Returns:
-            Overlays: As tabelas de overlay da ROM.
+            Overlays: The ROM overlay tables.
 
         Raises:
-            NdsRomError: Se a ROM não estiver configurada ou não puder ser interpretada.
+            NdsRomError: If the ROM is not configured or cannot be parsed.
         """
         return self._rom_instance()
 
     def close(self) -> None:
-        """Fecha os backends abertos."""
+        """Close the open backends."""
         if self._control is not None:
             self._control.close()
             self._control = None

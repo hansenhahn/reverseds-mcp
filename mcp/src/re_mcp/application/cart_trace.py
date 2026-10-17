@@ -1,4 +1,4 @@
-"""Serviço de aplicação: trace de leitura do cartucho sobre o canal de controle."""
+"""Application service: cartridge read trace over the control channel."""
 import time
 from collections.abc import Callable
 
@@ -6,50 +6,50 @@ from .ports import CartFs, ControlChannel
 
 
 class TraceError(RuntimeError):
-    """Erro ao iniciar o trace de cartucho."""
+    """Error starting the cartridge trace."""
 
 
 class CartTrace:
-    """Serviço: trace de leitura do cartucho sobre o canal de controle."""
+    """Service: cartridge read trace over the control channel."""
 
     def __init__(
         self, channel: ControlChannel, clock: Callable[[], float] = time.monotonic
     ) -> None:
-        """Monta o serviço sobre um canal de controle.
+        """Build the service over a control channel.
 
         Parameters:
-            channel (ControlChannel): Canal de controle conectado.
-            clock (Callable[[], float]): Relógio monotônico (injetável para testes).
+            channel (ControlChannel): A connected control channel.
+            clock (Callable[[], float]): Monotonic clock (injectable for tests).
         """
         self._channel = channel
         self._clock = clock
 
     def start(self, batch: int = 256, timeout_ms: int = 100) -> dict:
-        """Inicia o trace de leitura do cartucho.
+        """Start the cartridge read trace.
 
         Returns:
-            dict: O resultado do canal de controle.
+            dict: The control channel result.
         """
         return self._channel.call(
             "cart.trace.start", {"batch": batch, "timeout_ms": timeout_ms}
         )
 
     def stop(self) -> dict:
-        """Para o trace de leitura do cartucho.
+        """Stop the cartridge read trace.
 
         Returns:
-            dict: O resultado do canal de controle.
+            dict: The control channel result.
         """
         return self._channel.call("cart.trace.stop")
 
     def collect(self, seconds: float) -> list[dict]:
-        """Coleta as leituras recebidas (lotes ``event.cart``) por ``seconds``.
+        """Collect the reads received (``event.cart`` batches) for ``seconds``.
 
         Parameters:
-            seconds (float): Duração da coleta em segundos.
+            seconds (float): Collection duration in seconds.
 
         Returns:
-            list[dict]: As leituras ``{addr, length, command}`` coletadas.
+            list[dict]: The collected reads ``{addr, length, command}``.
         """
         reads: list[dict] = []
         deadline = self._clock() + seconds
@@ -65,19 +65,19 @@ class CartTrace:
     def by_file(
         self, seconds: float, fs: CartFs, batch: int = 256, timeout_ms: int = 100
     ) -> dict[str, int]:
-        """Inicia o trace, coleta por ``seconds`` e agrega por arquivo do FS.
+        """Start the trace, collect for ``seconds`` and aggregate by FS file.
 
         Parameters:
-            seconds (float): Duração da coleta.
-            fs (CartFs): O filesystem usado para traduzir offsets em arquivos.
-            batch (int): Itens por lote.
-            timeout_ms (int): Timeout do lote em milissegundos.
+            seconds (float): Collection duration.
+            fs (CartFs): The filesystem used to translate offsets into files.
+            batch (int): Items per batch.
+            timeout_ms (int): Batch timeout in milliseconds.
 
         Returns:
-            dict[str, int]: Contagem por caminho (``<não-arquivo>`` para offsets fora do FS).
+            dict[str, int]: Count per path (``<não-arquivo>`` for offsets outside the FS).
 
         Raises:
-            TraceError: Se o trace não iniciar.
+            TraceError: If the trace does not start.
         """
         started = self.start(batch, timeout_ms)
         if "error" in started:

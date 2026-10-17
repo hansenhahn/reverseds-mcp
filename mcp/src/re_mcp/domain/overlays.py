@@ -1,7 +1,7 @@
-"""Tabelas de overlay (y9/y7) do cartucho: entidades e agregado, sem I/O.
+"""Overlay tables (y9/y7) of the cartridge: entities and aggregate, without I/O.
 
-Os overlays são descritos pelo header da ROM (`arm9_overlay`/`arm7_overlay`);
-os dados de cada um ficam na FAT como arquivos comuns.
+Overlays are described by the ROM header (`arm9_overlay`/`arm7_overlay`); each one's
+data lives in the FAT as ordinary files.
 """
 import struct
 from dataclasses import dataclass
@@ -11,7 +11,7 @@ _ENTRY_SIZE = 32
 
 @dataclass(frozen=True, slots=True)
 class Overlay:
-    """Uma entrada de overlay: onde carrega na RAM e qual arquivo traz os dados."""
+    """An overlay entry: where it loads in RAM and which file carries its data."""
 
     core: str
     index: int
@@ -21,41 +21,41 @@ class Overlay:
     file_id: int
 
     def covers(self, addr: int) -> bool:
-        """Se ``addr`` cai na RAM ocupada por este overlay.
+        """Whether ``addr`` falls in the RAM occupied by this overlay.
 
         Parameters:
-            addr (int): Endereço de RAM.
+            addr (int): A RAM address.
 
         Returns:
-            bool: True se ``ram_address <= addr < ram_address + ram_size``.
+            bool: True if ``ram_address <= addr < ram_address + ram_size``.
         """
         return self.ram_address <= addr < self.ram_address + self.ram_size
 
 
 @dataclass(frozen=True, slots=True)
 class OverlayHit:
-    """Resolução de um endereço de RAM: o overlay e o deslocamento dentro dele."""
+    """Resolution of a RAM address: the overlay and the offset inside it."""
 
     overlay: Overlay
     offset: int
 
 
 class OverlayTable:
-    """Agregado: as entradas de overlay de um core (ARM9/ARM7)."""
+    """Aggregate: the overlay entries of one core (ARM9/ARM7)."""
 
     def __init__(self, overlays: list[Overlay]) -> None:
         self._overlays = overlays
 
     @classmethod
     def from_bytes(cls, data: bytes, core: str) -> "OverlayTable":
-        """Interpreta uma tabela de overlays (32 bytes por entrada).
+        """Parse an overlay table (32 bytes per entry).
 
         Parameters:
-            data (bytes): Conteúdo da tabela (`arm9_overlay` ou `arm7_overlay`).
-            core (str): ``arm9`` ou ``arm7``, para rotular as entradas.
+            data (bytes): The table contents (`arm9_overlay` or `arm7_overlay`).
+            core (str): ``arm9`` or ``arm7``, to label the entries.
 
         Returns:
-            OverlayTable: As entradas de overlay.
+            OverlayTable: The overlay entries.
         """
         overlays: list[Overlay] = []
         for off in range(0, len(data) - (_ENTRY_SIZE - 1), _ENTRY_SIZE):
@@ -75,17 +75,17 @@ class OverlayTable:
         return cls(overlays)
 
     def entries(self) -> list[Overlay]:
-        """As entradas de overlay."""
+        """The overlay entries."""
         return list(self._overlays)
 
     def for_address(self, addr: int) -> OverlayHit | None:
-        """Resolve um endereço de RAM para o overlay que o contém.
+        """Resolve a RAM address to the overlay that contains it.
 
         Parameters:
-            addr (int): Endereço de RAM.
+            addr (int): A RAM address.
 
         Returns:
-            OverlayHit | None: O overlay e o deslocamento, ou None.
+            OverlayHit | None: The overlay and the offset, or None.
         """
         for overlay in self._overlays:
             if overlay.covers(addr):

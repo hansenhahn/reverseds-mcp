@@ -1,4 +1,4 @@
-"""Tools MCP de depuração (gdb): memória, registradores, breakpoints e execução."""
+"""MCP tools for debugging (gdb): memory, registers, breakpoints and execution."""
 import json
 
 from ..domain.disasm import Disassembler
@@ -8,16 +8,16 @@ from .app import bridge, debug_error, error, mcp
 
 @mcp.tool()
 def debug_connect(core: str = "arm9") -> dict:
-    """Conecta o backend de debug (gdb) ao core escolhido.
+    """Connect the debug backend (gdb) to the chosen core.
 
-    Faz uma leitura de teste do PC após conectar; se o stub não responder,
-    desconecta e reporta erro com dica.
+    Does a test read of the PC after connecting; if the stub does not respond,
+    disconnects and reports an error with a hint.
 
     Parameters:
-        core (str): ``arm9`` ou ``arm7``.
+        core (str): ``arm9`` or ``arm7``.
 
     Returns:
-        dict: ``{"ok": true, "core": ..., "pc": ...}`` ou ``{"error", "hint"?}``.
+        dict: ``{"ok": true, "core": ..., "pc": ...}`` or ``{"error", "hint"?}``.
     """
     try:
         backend = bridge.debugger()
@@ -40,13 +40,13 @@ def debug_connect(core: str = "arm9") -> dict:
 
 @mcp.tool()
 def debug_read_register(name: str = "pc") -> dict:
-    """Lê um registrador do core conectado (ex.: ``pc``).
+    """Read a register of the connected core (e.g. ``pc``).
 
     Parameters:
-        name (str): Nome do registrador.
+        name (str): Register name.
 
     Returns:
-        dict: ``{"name": ..., "value": ...}`` ou ``{"error": ...}``.
+        dict: ``{"name": ..., "value": ...}`` or ``{"error": ...}``.
     """
     try:
         value = bridge.debugger().read_register(name)
@@ -57,14 +57,14 @@ def debug_read_register(name: str = "pc") -> dict:
 
 @mcp.tool()
 def debug_write_register(name: str, value: int) -> dict:
-    """Escreve um valor num registrador.
+    """Write a value to a register.
 
     Parameters:
-        name (str): Nome do registrador (ex.: ``pc``).
-        value (int): Valor a escrever.
+        name (str): Register name (e.g. ``pc``).
+        value (int): Value to write.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     try:
         bridge.debugger().write_register(name, value)
@@ -75,14 +75,14 @@ def debug_write_register(name: str, value: int) -> dict:
 
 @mcp.tool()
 def mem_read(addr: int, size: int) -> dict:
-    """Lê memória emulada e devolve os bytes em hexadecimal.
+    """Read emulated memory and return the bytes in hexadecimal.
 
     Parameters:
-        addr (int): Endereço inicial.
-        size (int): Quantidade de bytes.
+        addr (int): Start address.
+        size (int): Number of bytes.
 
     Returns:
-        dict: ``{"addr": ..., "size": ..., "hex": ...}`` ou ``{"error": ...}``.
+        dict: ``{"addr": ..., "size": ..., "hex": ...}`` or ``{"error": ...}``.
     """
     try:
         data = bridge.debugger().read_memory(addr, size)
@@ -93,14 +93,14 @@ def mem_read(addr: int, size: int) -> dict:
 
 @mcp.tool()
 def mem_write(addr: int, hex_data: str) -> dict:
-    """Escreve bytes (hex) na memória emulada a partir de um endereço.
+    """Write bytes (hex) to emulated memory starting at an address.
 
     Parameters:
-        addr (int): Endereço inicial.
-        hex_data (str): Bytes em hexadecimal (ex.: ``deadbeef``).
+        addr (int): Start address.
+        hex_data (str): Bytes in hex (e.g. ``deadbeef``).
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     try:
         bridge.debugger().write_memory(addr, bytes.fromhex(hex_data))
@@ -111,18 +111,18 @@ def mem_write(addr: int, hex_data: str) -> dict:
 
 @mcp.tool()
 def mem_dump_file(addr: int, size: int, name: str | None = None) -> dict:
-    """Lê memória e grava um ``.bin`` (e um ``.json``) no diretório de saída.
+    """Read memory and write a ``.bin`` (plus a ``.json``) in the output directory.
 
-    Evita trafegar hex gigante pelo MCP: o arquivo vai para ``RE_MCP_OUT_DIR``
-    (montado no host, ex.: ``/out``).
+    Avoids moving huge hex through the MCP: the file goes to ``RE_MCP_OUT_DIR``
+    (mounted on the host, e.g. ``/out``).
 
     Parameters:
-        addr (int): Endereço inicial.
-        size (int): Quantidade de bytes.
-        name (str | None): Nome do arquivo (default ``dump_<addr>_<size>.bin``).
+        addr (int): Start address.
+        size (int): Number of bytes.
+        name (str | None): File name (default ``dump_<addr>_<size>.bin``).
 
     Returns:
-        dict: ``{"path": ..., "addr": ..., "size": ...}`` ou ``{"error": ...}``.
+        dict: ``{"path": ..., "addr": ..., "size": ...}`` or ``{"error": ...}``.
     """
     try:
         data = bridge.debugger().read_memory(addr, size)
@@ -139,17 +139,17 @@ def mem_dump_file(addr: int, size: int, name: str | None = None) -> dict:
 
 @mcp.tool()
 def disassemble(addr: int, count: int = 16, mode: str = "arm") -> dict:
-    """Desmonta ``count`` instruções a partir de ``addr`` (ARM ou Thumb).
+    """Disassemble ``count`` instructions starting at ``addr`` (ARM or Thumb).
 
-    Lê a memória pelo backend de debug — o alvo precisa estar **parado**.
+    Reads memory through the debug backend — the target must be **stopped**.
 
     Parameters:
-        addr (int): Endereço inicial.
-        count (int): Quantidade de instruções (1..256).
-        mode (str): ``arm`` ou ``thumb``.
+        addr (int): Start address.
+        count (int): Number of instructions (1..256).
+        mode (str): ``arm`` or ``thumb``.
 
     Returns:
-        dict: ``{"addr", "mode", "instructions": [...]}`` ou ``{"error": ...}``.
+        dict: ``{"addr", "mode", "instructions": [...]}`` or ``{"error": ...}``.
     """
     count = max(1, min(count, 256))
     try:
@@ -178,13 +178,13 @@ def disassemble(addr: int, count: int = 16, mode: str = "arm") -> dict:
 
 @mcp.tool()
 def set_breakpoint(addr: int) -> dict:
-    """Cria um breakpoint de código num endereço.
+    """Create a code breakpoint at an address.
 
     Parameters:
-        addr (int): Endereço.
+        addr (int): Address.
 
     Returns:
-        dict: ``{"number": N}`` ou ``{"error": ...}``.
+        dict: ``{"number": N}`` or ``{"error": ...}``.
     """
     try:
         return {"number": bridge.debugger().set_breakpoint(addr)}
@@ -194,17 +194,17 @@ def set_breakpoint(addr: int) -> dict:
 
 @mcp.tool()
 def set_watchpoint(addr: int, kind: str = "write", condition: str | None = None) -> dict:
-    """Cria um watchpoint de hardware (``write``/``read``/``access``).
+    """Create a hardware watchpoint (``write``/``read``/``access``).
 
     Parameters:
-        addr (int): Endereço vigiado.
-        kind (str): Tipo de acesso.
-        condition (str | None): Expressão gdb opcional; o gdb só para quando ela
-            for verdadeira (filtra por valor). Ex.:
+        addr (int): Watched address.
+        kind (str): Access kind.
+        condition (str | None): Optional gdb expression; gdb only stops when it is
+            true (filters by value). E.g.
             ``*(unsigned short*)0x0600F448 != 0``.
 
     Returns:
-        dict: ``{"number": N}`` ou ``{"error": ...}``.
+        dict: ``{"number": N}`` or ``{"error": ...}``.
     """
     try:
         return {"number": bridge.debugger().set_watchpoint(addr, kind, condition)}
@@ -214,13 +214,13 @@ def set_watchpoint(addr: int, kind: str = "write", condition: str | None = None)
 
 @mcp.tool()
 def remove_breakpoint(number: int) -> dict:
-    """Remove um breakpoint/watchpoint pelo número.
+    """Remove a breakpoint/watchpoint by number.
 
     Parameters:
-        number (int): Número.
+        number (int): The number.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     try:
         bridge.debugger().remove(number)
@@ -231,13 +231,13 @@ def remove_breakpoint(number: int) -> dict:
 
 @mcp.tool()
 def debug_continue(timeout: float = 30.0) -> dict:
-    """Retoma a execução e espera a parada (breakpoint/watchpoint).
+    """Resume execution and wait for the stop (breakpoint/watchpoint).
 
     Parameters:
-        timeout (float): Tempo máximo de espera em segundos.
+        timeout (float): Maximum wait time in seconds.
 
     Returns:
-        dict: ``{"stopped": bool}`` ou ``{"error": ...}``.
+        dict: ``{"stopped": bool}`` or ``{"error": ...}``.
     """
     try:
         stopped = bridge.debugger().continue_(timeout)
@@ -248,14 +248,14 @@ def debug_continue(timeout: float = 30.0) -> dict:
 
 @mcp.tool()
 def debug_resume() -> dict:
-    """Retoma a execução em segundo plano (NÃO bloqueia).
+    """Resume execution in the background (NON-blocking).
 
-    Diferente de ``debug_continue`` (roda até parar), isto deixa o alvo rodando
-    com o gdb ainda conectado, para o agente poder injetar input (canal de
-    controle) e depois usar ``debug_wait`` para pegar a parada.
+    Unlike ``debug_continue`` (runs until it stops), this leaves the target running
+    with gdb still attached, so the agent can inject input (control channel) and then
+    use ``debug_wait`` to pick up the stop.
 
     Returns:
-        dict: ``{"ok": true, "running": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true, "running": true}`` or ``{"error": ...}``.
     """
     try:
         bridge.debugger().resume()
@@ -266,13 +266,13 @@ def debug_resume() -> dict:
 
 @mcp.tool()
 def debug_wait(timeout: float = 30.0) -> dict:
-    """Espera a parada do ``continue`` de fundo (breakpoint/watchpoint).
+    """Wait for the background ``continue`` to stop (breakpoint/watchpoint).
 
     Parameters:
-        timeout (float): Tempo máximo de espera em segundos.
+        timeout (float): Maximum wait time in seconds.
 
     Returns:
-        dict: ``{"stopped": bool, "running": bool}`` ou ``{"error": ...}``.
+        dict: ``{"stopped": bool, "running": bool}`` or ``{"error": ...}``.
     """
     try:
         stopped = bridge.debugger().wait_stop(timeout)
@@ -283,10 +283,10 @@ def debug_wait(timeout: float = 30.0) -> dict:
 
 @mcp.tool()
 def debug_step() -> dict:
-    """Executa uma instrução.
+    """Execute one instruction.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     try:
         bridge.debugger().step()
@@ -297,10 +297,10 @@ def debug_step() -> dict:
 
 @mcp.tool()
 def debug_interrupt() -> dict:
-    """Interrompe a execução.
+    """Interrupt execution.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     try:
         bridge.debugger().interrupt()
@@ -311,10 +311,10 @@ def debug_interrupt() -> dict:
 
 @mcp.tool()
 def debug_disconnect() -> dict:
-    """Desconecta o backend de debug — o emulador volta a rodar.
+    """Disconnect the debug backend — the emulator runs again.
 
     Returns:
-        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     try:
         bridge.debugger().disconnect()

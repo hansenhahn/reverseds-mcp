@@ -1,1 +1,1 @@
-"""Domínio: tipos, portas e workflows de RE (sem dependência de I/O)."""
+"""Domain: pure model and domain services (no I/O, no ports)."""

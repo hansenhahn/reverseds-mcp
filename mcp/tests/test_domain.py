@@ -1,4 +1,4 @@
-"""Testes do domínio puro (`disasm`, macros de input) — sem emulador."""
+"""Pure domain tests (`disasm`, input macros) — without the emulator."""
 import pytest
 
 from re_mcp.application.input import InputMacros
@@ -7,7 +7,7 @@ from re_mcp.domain.input import NO_KEY, InputStep
 
 
 class FakeChannel:
-    """Canal de controle fake: registra as chamadas."""
+    """Fake control channel: records the calls."""
 
     def __init__(self, fail_on: int | None = None) -> None:
         self.calls: list[tuple[str, dict | None]] = []
@@ -29,26 +29,26 @@ class FakeChannel:
 
 
 def test_disassemble_arm() -> None:
-    """`mov r0, #1` (ARM) é desmontado como `mov`."""
+    """`mov r0, #1` (ARM) disassembles as `mov`."""
     insns = Disassembler().disassemble(bytes.fromhex("0100a0e3"), 0x02000000, "arm", 1)
     assert insns[0].mnemonic == "mov"
     assert insns[0].address == 0x02000000
 
 
 def test_disassemble_thumb() -> None:
-    """`movs r0, #1` (Thumb) é desmontado como `movs`."""
+    """`movs r0, #1` (Thumb) disassembles as `movs`."""
     insns = Disassembler().disassemble(bytes.fromhex("0120"), 0x02000000, "thumb", 1)
     assert insns[0].mnemonic == "movs"
 
 
 def test_disassemble_invalid_mode() -> None:
-    """Modo inválido levanta ValueError."""
+    """An invalid mode raises ValueError."""
     with pytest.raises(ValueError):
         Disassembler().disassemble(b"\x00\x00\x00\x00", 0, "x86")
 
 
 def test_tap_presses_and_releases() -> None:
-    """`tap` aperta a máscara e solta no fim."""
+    """`tap` presses the mask and releases at the end."""
     ch = FakeChannel()
     sleeps: list[float] = []
     InputMacros(ch, sleep=sleeps.append).tap(0xFF7, 100)
@@ -58,7 +58,7 @@ def test_tap_presses_and_releases() -> None:
 
 
 def test_sequence_runs_steps() -> None:
-    """`run` executa os passos e solta no fim."""
+    """`run` executes the steps and releases at the end."""
     ch = FakeChannel()
     steps = [InputStep(ms=100, after_ms=1000, mask=0xFF7), InputStep(ms=100, after_ms=0, mask=0xFFD)]
     InputMacros(ch, sleep=lambda _s: None).run(steps)
@@ -68,14 +68,14 @@ def test_sequence_runs_steps() -> None:
 
 
 def test_sequence_wait_only_step() -> None:
-    """Passo sem máscara apenas espera (não pressiona)."""
+    """A step without a mask only waits (does not press)."""
     ch = FakeChannel()
     InputMacros(ch, sleep=lambda _s: None).run([InputStep(ms=50, after_ms=0, mask=None)])
     assert all(method == "input.release" for method, _ in ch.calls)
 
 
 def test_sequence_releases_on_error() -> None:
-    """Se um passo falha, o input é solto mesmo assim."""
+    """If a step fails, the input is still released."""
     ch = FakeChannel(fail_on=3)
     with pytest.raises(RuntimeError):
         InputMacros(ch, sleep=lambda _s: None).run(
@@ -85,7 +85,7 @@ def test_sequence_releases_on_error() -> None:
 
 
 def test_sequence_rejects_too_long() -> None:
-    """Sequência acima do teto levanta ValueError."""
+    """A sequence above the cap raises ValueError."""
     with pytest.raises(ValueError):
         InputMacros(FakeChannel(), sleep=lambda _s: None).run(
             [InputStep(ms=10_000, after_ms=10_000, mask=0xFF7)], max_total_ms=1000
@@ -93,5 +93,5 @@ def test_sequence_rejects_too_long() -> None:
 
 
 def test_no_key_constant() -> None:
-    """A const de 'nada pressionado' é 0xFFF."""
+    """The 'nothing pressed' constant is 0xFFF."""
     assert NO_KEY == 0xFFF

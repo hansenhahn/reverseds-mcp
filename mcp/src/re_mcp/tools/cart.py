@@ -1,4 +1,4 @@
-"""Tools MCP do cartucho: filesystem (NitroFS) e overlays."""
+"""MCP tools for the cartridge: filesystem (NitroFS) and overlays."""
 import os
 
 from ..application.cart_trace import CartTrace, TraceError
@@ -10,13 +10,13 @@ from .app import bridge, error, mcp
 
 @mcp.tool()
 def cart_file(offset: int) -> dict:
-    """Traduz um offset da ROM no arquivo NitroFS correspondente.
+    """Translate a ROM offset into the corresponding NitroFS file.
 
     Parameters:
-        offset (int): Offset na ROM (ex.: um endereço lido no trace de cartucho).
+        offset (int): Offset in the ROM (e.g. an address read in the cart trace).
 
     Returns:
-        dict: ``{"file": ...}`` ou ``{"error": ...}``.
+        dict: ``{"file": ...}`` or ``{"error": ...}``.
     """
     try:
         path = bridge.cartfs().file_for_offset(offset)
@@ -29,10 +29,10 @@ def cart_file(offset: int) -> dict:
 
 @mcp.tool()
 def cart_list() -> dict:
-    """Lista os arquivos do filesystem da ROM (NitroFS).
+    """List the ROM filesystem (NitroFS) files.
 
     Returns:
-        dict: ``{"total": N, "files": [{"id", "path"}]}`` ou ``{"error": ...}``.
+        dict: ``{"total": N, "files": [{"id", "path"}]}`` or ``{"error": ...}``.
     """
     try:
         entries = bridge.cartfs().files()
@@ -46,13 +46,13 @@ def cart_list() -> dict:
 
 @mcp.tool()
 def cart_read(path: str) -> dict:
-    """Lê um arquivo do filesystem da ROM e grava em `/out`.
+    """Read a ROM filesystem file and write it to `/out`.
 
     Parameters:
-        path (str): Caminho do arquivo dentro da ROM (ex.: ``/data/x.sdat``).
+        path (str): File path inside the ROM (e.g. ``/data/x.sdat``).
 
     Returns:
-        dict: ``{"path", "size"}`` ou ``{"error": ...}``.
+        dict: ``{"path", "size"}`` or ``{"error": ...}``.
     """
     try:
         data = bridge.cartfs().read_file(path)
@@ -64,17 +64,17 @@ def cart_read(path: str) -> dict:
 
 @mcp.tool()
 def cart_read_files(seconds: float = 3.0, batch: int = 256, timeout_ms: int = 100) -> dict:
-    """Monitora leituras do cartucho por um período e agrega por arquivo NitroFS.
+    """Monitor cartridge reads for a period and aggregate by NitroFS file.
 
-    Inicia o trace, coleta as leituras, para, e agrupa por arquivo.
+    Starts the trace, collects the reads, stops, and groups by file.
 
     Parameters:
-        seconds (float): Duração da coleta em segundos.
-        batch (int): Itens por lote.
-        timeout_ms (int): Timeout do lote em milissegundos.
+        seconds (float): Collection duration in seconds.
+        batch (int): Items per batch.
+        timeout_ms (int): Batch timeout in milliseconds.
 
     Returns:
-        dict: ``{"total": N, "files": {arquivo: contagem}}`` ou ``{"error": ...}``.
+        dict: ``{"total": N, "files": {file: count}}`` or ``{"error": ...}``.
     """
     try:
         channel = bridge.control()
@@ -89,7 +89,7 @@ def cart_read_files(seconds: float = 3.0, batch: int = 256, timeout_ms: int = 10
 
 
 def _overlay_dict(overlay: Overlay) -> dict:
-    """Serializa um overlay para o retorno das tools."""
+    """Serialize an overlay for the tool response."""
     return {
         "core": overlay.core,
         "index": overlay.index,
@@ -102,13 +102,13 @@ def _overlay_dict(overlay: Overlay) -> dict:
 
 @mcp.tool()
 def overlay_list(core: str | None = None) -> dict:
-    """Lista os overlays da ROM (ARM9 e/ou ARM7).
+    """List the ROM overlays (ARM9 and/or ARM7).
 
     Parameters:
-        core (str | None): ``arm9``, ``arm7`` ou None para ambos.
+        core (str | None): ``arm9``, ``arm7`` or None for both.
 
     Returns:
-        dict: ``{"arm9": [...], "arm7": [...]}`` (ou só o core pedido) ou ``{"error": ...}``.
+        dict: ``{"arm9": [...], "arm7": [...]}`` (or just the requested core) or ``{"error": ...}``.
     """
     try:
         overlays = bridge.overlays()
@@ -120,14 +120,14 @@ def overlay_list(core: str | None = None) -> dict:
 
 @mcp.tool()
 def overlay_for_address(addr: int, core: str = "arm9") -> dict:
-    """Resolve um endereço de RAM para o overlay que o contém.
+    """Resolve a RAM address to the overlay that contains it.
 
     Parameters:
-        addr (int): Endereço de RAM.
-        core (str): ``arm9`` ou ``arm7``.
+        addr (int): RAM address.
+        core (str): ``arm9`` or ``arm7``.
 
     Returns:
-        dict: ``{"overlay": {...}, "offset"}`` ou ``{"overlay": None}``.
+        dict: ``{"overlay": {...}, "offset"}`` or ``{"overlay": None}``.
     """
     try:
         hit = bridge.overlays().overlay_for_address(addr, core)

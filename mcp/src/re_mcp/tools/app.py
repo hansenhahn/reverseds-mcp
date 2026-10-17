@@ -1,4 +1,4 @@
-"""Base das tools MCP: servidor, ponte e helpers de erro compartilhados."""
+"""Base for the MCP tools: server, bridge and shared error helpers."""
 from mcp.server.mcpserver import MCPServer
 
 from ..bridge import Bridge
@@ -10,14 +10,14 @@ mcp = MCPServer("re-mcp")
 
 
 def error(exc: Exception, hint: str | None = None) -> dict:
-    """Erro padronizado: ``{"error", "hint"?}``.
+    """Standardized error: ``{"error", "hint"?}``.
 
     Parameters:
-        exc (Exception): A causa.
-        hint (str | None): Dica opcional.
+        exc (Exception): The cause.
+        hint (str | None): Optional hint.
 
     Returns:
-        dict: O dicionário de erro.
+        dict: The error dictionary.
     """
     out: dict = {"error": str(exc)}
     if hint:
@@ -26,13 +26,13 @@ def error(exc: Exception, hint: str | None = None) -> dict:
 
 
 def debug_error(exc: Exception) -> dict:
-    """Erro do debugger com dica conforme a causa.
+    """Debugger error with a hint depending on the cause.
 
     Parameters:
-        exc (Exception): A causa.
+        exc (Exception): The cause.
 
     Returns:
-        dict: O dicionário de erro, com dica quando reconhecemos a causa.
+        dict: The error dictionary, with a hint when we recognize the cause.
     """
     msg = str(exc)
     if "alvo em execução" in msg:
@@ -45,14 +45,14 @@ def debug_error(exc: Exception) -> dict:
 
 
 def control_call(method: str, params: dict | None = None) -> dict:
-    """Chama o canal de controle, convertendo erro em dicionário.
+    """Call the control channel, turning errors into a dictionary.
 
     Parameters:
-        method (str): Método do canal de controle.
-        params (dict | None): Parâmetros.
+        method (str): Control-channel method.
+        params (dict | None): Parameters.
 
     Returns:
-        dict: O resultado, ou ``{"error", "hint"?}``.
+        dict: The result, or ``{"error", "hint"?}``.
     """
     try:
         return bridge.control().call(method, params)
