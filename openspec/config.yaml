@@ -64,6 +64,11 @@ context: |
     (subpacote, um módulo por porta: `control`, `debug`, `cartfs`, `overlays`,
     `files`), reexportadas em `application/ports/__init__.py`; os adaptadores em
     `infra/` herdam a porta explicitamente (ex.: `class GdbBackend(Debugger)`).
+  - **Contratos de arquitetura (import-linter)**: as camadas são enforçadas por
+    contratos `forbidden` em `mcp/pyproject.toml` (`[tool.importlinter]`): `domain`
+    não importa `application`/`infra`/`tools`/`bridge`; `application` não importa
+    `infra`/`tools`/`bridge`; `infra` não importa `tools`/`bridge`. `uv run
+    lint-imports` faz parte da definição de pronto (há um teste que o executa).
   - **Contratos estáticos (pyright)**: as portas são `Protocol` e os contratos são
     verificados **estaticamente** com **pyright** (`mcp/pyrightconfig.json`), não em
     runtime. `uv run pyright` sem erros faz parte da definição de pronto; os fakes de
@@ -112,7 +117,8 @@ context: |
           """
   - Módulo e classe: resumo curto em uma linha; a classe pode ter um parágrafo
     explicando a responsabilidade e um bloco `Note:` quando fizer sentido.
-  - Texto em português (diretriz de idioma); cabeçalhos de seção em inglês.
+  - **Idioma do código**: docstrings e comentários em **inglês** (texto e
+    cabeçalhos). Os artefatos e documentos do OpenSpec seguem em português.
   - **Comentários**: esparsos, só quando o "porquê" não é óbvio — nunca explicar o
     "o quê" (código e tipos já dizem). Sem comentários redundantes.
 
@@ -137,7 +143,7 @@ operations:
       - Mantenha o diff mínimo e confinado ao escopo do change.
       - Não altere o comportamento de emulação; rode o build e os testes de smoke existentes antes de concluir.
       - Não reformate código não relacionado nem introduza abstrações especulativas.
-      - Rode `uv run pyright` (MCP) e `uv run python -m pytest`; não conclua com erros. Novos adaptadores devem satisfazer a porta (`Protocol`).
+      - Rode `uv run pyright`, `uv run lint-imports` e `uv run python -m pytest` (MCP); não conclua com erros. Novos adaptadores devem satisfazer a porta (`Protocol`) e respeitar as camadas.
   archive:
     guidance:
       - Resuma o que mudou e confirme que não houve regressão de comportamento.
