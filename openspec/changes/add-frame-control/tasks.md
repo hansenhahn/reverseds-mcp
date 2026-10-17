@@ -1,12 +1,13 @@
-## 1. Emulador — controle de frame (frontend)
+## 1. Emulador — step_frame (frontend)
 
-- [ ] 1.1 Primitivo interno de "esperar o próximo vblank + parar", na `EmuThread` (O(1), sem alocação). Verificar: compila e o laço de quadro para no vblank com framebuffer composto.
-- [ ] 1.2 `emu.step_frame(N)` e `emu.pause_at_next_frame()` sobre o primitivo, respondendo quando a parada ocorre. Verificar: sem parada agendada, custo por quadro nulo; `step_frame(N)` avança N numa chamada.
+- [ ] 1.1 `EmuThread::emuStepFrames(n)`: contador no frame-step existente + bloqueio até zerar (condição). Verificar: chamada bloqueia até os N quadros rodarem e termina pausado.
+- [ ] 1.2 Laço: rodar um quadro por iteração enquanto `frameStepCount > 0`, parar no vblank com framebuffer composto, O(1) sem alocação. Verificar: sem avanço em andamento, custo por quadro nulo.
+- [ ] 1.3 Método `emu.step_frame` no canal de controle (param `n ≥ 1`). Verificar: `control-client.py` retorna após N quadros.
 
-## 2. MCP — tools
+## 2. MCP — tool
 
-- [ ] 2.1 Tools finas `emu_step_frame` e `emu_pause_at_next_frame` (sem expor `run_until_vblank`). Verificar: agente lista as 2 tools.
-- [ ] 2.2 Smoke com emulador: `step_frame(1)` num frame e captura reflete o frame; `step_frame(60)` avança ~1 s. Verificar: captura determinística entre chamadas.
+- [ ] 2.1 Tool fina `emu_step_frame(n)` (sem expor `run_until_vblank`/`pause_at_next_frame`). Verificar: agente lista a tool.
+- [ ] 2.2 Smoke com emulador: `emu_step_frame(1)` num frame e captura reflete o frame; `emu_step_frame(60)` avança ~1 s. Verificar: captura determinística entre chamadas.
 
 ## 3. Validação
 
