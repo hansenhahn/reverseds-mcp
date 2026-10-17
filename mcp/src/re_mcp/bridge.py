@@ -4,11 +4,11 @@ Acesso preguiçoso (lazy): a conexão só é aberta na primeira chamada, para o 
 subir mesmo sem emulador rodando.
 """
 from .config import Config
-from .domain.ports import CartFs, ControlChannel, Debugger
+from .domain.ports import CartFs, ControlChannel, Debugger, Overlays
 from .domain.types import Symbol
 from .infra.control import UnixControlChannel
 from .infra.gdb import GdbBackend
-from .infra.nitrofs import NitroFs, NitroFsError
+from .infra.ndsrom import NdsRom, NdsRomError
 
 
 class Bridge:
@@ -25,7 +25,7 @@ class Bridge:
         self._debugger: Debugger | None = None
         self._symbols: list[Symbol] = []
         self._snapshots: dict[str, tuple[int, bytes]] = {}
-        self._nitrofs: CartFs | None = None
+        self._rom: NdsRom | None = None
 
     @property
     def config(self) -> Config:
@@ -48,20 +48,34 @@ class Bridge:
         """As capturas de memória guardadas (nome -> (base, bytes))."""
         return self._snapshots
 
+    def _rom_instance(self) -> NdsRom:
+        if self._rom is None:
+            if not self._config.rom_path:
+                raise NdsRomError("ROM não configurada (defina RE_MCP_ROM)")
+            self._rom = NdsRom(self._config.rom_path)
+        return self._rom
+
     def nitrofs(self) -> CartFs:
-        """Devolve o NitroFS da ROM, abrindo-o na primeira chamada.
+        """Devolve o filesystem da ROM (NitroFS), abrindo-o na primeira chamada.
 
         Returns:
             CartFs: O filesystem da ROM.
 
         Raises:
-            NitroFsError: Se a ROM não estiver configurada ou o ndstool falhar.
+            NdsRomError: Se a ROM não estiver configurada ou não puder ser interpretada.
         """
-        if self._nitrofs is None:
-            if not self._config.rom_path:
-                raise NitroFsError("ROM não configurada (defina RE_MCP_ROM)")
-            self._nitrofs = NitroFs(self._config.rom_path, self._config.ndstool_path)
-        return self._nitrofs
+        return self._rom_instance()
+
+    def overlays(self) -> Overlays:
+        """Devolve a interpretação de overlays da ROM, abrindo-a na primeira chamada.
+
+        Returns:
+            Overlays: As tabelas de overlay da ROM.
+
+        Raises:
+            NdsRomError: Se a ROM não estiver configurada ou não puder ser interpretada.
+        """
+        return self._rom_instance()
 
     def control(self) -> ControlChannel:
         """Devolve o canal de controle, abrindo-o na primeira chamada.
@@ -98,3 +112,6 @@ class Bridge:
         if self._debugger is not None:
             self._debugger.close()
             self._debugger = None
+        if self._rom is not None:
+            self._rom.close()
+            self._rom = None

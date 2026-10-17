@@ -7,5 +7,6 @@ estaticamente com `pyright` (ver `pyrightconfig.json`).
 from .cartfs import CartFs
 from .control import ControlChannel
 from .debug import Debugger
+from .overlays import Overlays
 
-__all__ = ["CartFs", "ControlChannel", "Debugger"]
+__all__ = ["CartFs", "ControlChannel", "Debugger", "Overlays"]

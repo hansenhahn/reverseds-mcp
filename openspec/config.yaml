@@ -4,6 +4,8 @@ context: |
   Language: Portuguese
   All artifacts must be written in Portuguese.
   Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+  GitHub: pull requests (título, descrição) e comentários SEMPRE em inglês
+  (não traduzir para o português o que é publicado no GitHub).
 
   ## Diretrizes de desenvolvimento (obrigatórias)
 

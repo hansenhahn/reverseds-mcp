@@ -12,9 +12,10 @@ from ..bridge import Bridge
 from ..config import Config
 from ..domain import disasm, workflows
 from ..domain import input as input_macros
+from ..domain.overlays import Overlay
 from ..infra.control import ControlError
 from ..infra.gdb import DebugError
-from ..infra.nitrofs import NitroFsError
+from ..infra.ndsrom import NdsRomError
 
 _bridge = Bridge(Config.from_env())
 
@@ -843,7 +844,7 @@ def cart_file(offset: int) -> dict:
     """
     try:
         path = _bridge.nitrofs().file_for_offset(offset)
-    except NitroFsError as exc:
+    except NdsRomError as exc:
         return {"error": str(exc)}
     if path is None:
         return {"file": None, "error": "offset não pertence a nenhum arquivo NitroFS"}
@@ -867,7 +868,7 @@ def cart_read_files(seconds: float = 3.0, batch: int = 256, timeout_ms: int = 10
     try:
         channel = _bridge.control()
         nitrofs = _bridge.nitrofs()
-    except (ControlError, NitroFsError) as exc:
+    except (ControlError, NdsRomError) as exc:
         return {"error": str(exc)}
 
     started = channel.call("cart.trace.start", {"batch": batch, "timeout_ms": timeout_ms})
@@ -893,3 +894,91 @@ def cart_read_files(seconds: float = 3.0, batch: int = 256, timeout_ms: int = 10
     finally:
         channel.call("cart.trace.stop")
     return {"total": total, "files": files}
+
+
+def _overlay_dict(overlay: Overlay) -> dict:
+    """Serializa um overlay para o retorno das tools."""
+    return {
+        "core": overlay.core,
+        "index": overlay.index,
+        "ram_address": overlay.ram_address,
+        "ram_size": overlay.ram_size,
+        "bss_size": overlay.bss_size,
+        "file_id": overlay.file_id,
+    }
+
+
+@mcp.tool()
+def cart_list() -> dict:
+    """Lista os arquivos do filesystem da ROM (NitroFS).
+
+    Returns:
+        dict: ``{"total": N, "files": [{"id", "path"}]}`` ou ``{"error": ...}``.
+    """
+    try:
+        entries = _bridge.nitrofs().files()
+    except NdsRomError as exc:
+        return _error(exc)
+    return {
+        "total": len(entries),
+        "files": [{"id": entry.file_id, "path": entry.path} for entry in entries],
+    }
+
+
+@mcp.tool()
+def cart_read(path: str) -> dict:
+    """Lê um arquivo do filesystem da ROM e grava em `/out`.
+
+    Parameters:
+        path (str): Caminho do arquivo dentro da ROM (ex.: ``/data/x.sdat``).
+
+    Returns:
+        dict: ``{"path", "size"}`` ou ``{"error": ...}``.
+    """
+    try:
+        data = _bridge.nitrofs().read_file(path)
+    except NdsRomError as exc:
+        return _error(exc)
+    os.makedirs(_OUT_DIR, exist_ok=True)
+    out_path = os.path.join(_OUT_DIR, os.path.basename(path) or "cart_file.bin")
+    with open(out_path, "wb") as fh:
+        fh.write(data)
+    return {"path": out_path, "size": len(data)}
+
+
+@mcp.tool()
+def overlay_list(core: str | None = None) -> dict:
+    """Lista os overlays da ROM (ARM9 e/ou ARM7).
+
+    Parameters:
+        core (str | None): ``arm9``, ``arm7`` ou None para ambos.
+
+    Returns:
+        dict: ``{"arm9": [...], "arm7": [...]}`` (ou só o core pedido) ou ``{"error": ...}``.
+    """
+    try:
+        overlays = _bridge.overlays()
+        cores = [core] if core else ["arm9", "arm7"]
+        return {name: [_overlay_dict(o) for o in overlays.overlay_list(name)] for name in cores}
+    except NdsRomError as exc:
+        return _error(exc)
+
+
+@mcp.tool()
+def overlay_for_address(addr: int, core: str = "arm9") -> dict:
+    """Resolve um endereço de RAM para o overlay que o contém.
+
+    Parameters:
+        addr (int): Endereço de RAM.
+        core (str): ``arm9`` ou ``arm7``.
+
+    Returns:
+        dict: ``{"overlay": {...}, "offset"}`` ou ``{"overlay": None}``.
+    """
+    try:
+        hit = _bridge.overlays().overlay_for_address(addr, core)
+    except NdsRomError as exc:
+        return _error(exc)
+    if hit is None:
+        return {"overlay": None}
+    return {"overlay": _overlay_dict(hit.overlay), "offset": hit.offset}
