@@ -1,0 +1,127 @@
+schema: spec-driven
+
+context: |
+  Language: Portuguese
+  All artifacts must be written in Portuguese.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  ## Diretrizes de desenvolvimento (obrigatórias)
+
+  Projeto: fork do emulador melonDS (C++), depurado por GDB, com um canal de
+  controle para um agente (MCP). O objetivo é adicionar capacidades SEM virar o
+  emulador de cabeça para baixo.
+
+  Arquitetura:
+  - Siga a arquitetura e as convenções já existentes do melonDS. Código novo
+    pertence à camada de frontend (src/frontend/qt_sdl), a menos que o núcleo
+    (src/) realmente precise mudar — e, nesse caso, justifique.
+  - Prefira reutilizar APIs do núcleo já existentes (ex.: NDS::SetKeyMask,
+    NDS::TouchScreen, GPU::GetFramebuffers, a fila de mensagens da EmuThread) em
+    vez de criar mecanismos novos.
+  - Respeite o modelo de threads: o núcleo é single-thread e só pode ser tocado
+    pela EmuThread. O que mexe no núcleo entra pela fila de mensagens.
+
+  Transparência e escopo:
+  - Mudanças mínimas e transparentes: não altere o comportamento de emulação, não
+    refatore além da tarefa e não reformate código não relacionado.
+  - O diff deve ficar confinado ao escopo do change.
+
+  Qualidade (sem slop):
+  - Sem abstrações especulativas, sem código morto, sem código de enfeite. Toda
+    adição precisa ser justificada por um requisito do spec.
+  - Siga o estilo do código ao redor (nomenclatura, formatação, logging).
+  - Cada tarefa deve declarar como verificar a conclusão (teste, comando ou
+    comportamento observável).
+
+  Performance (crítico):
+  - Adicione o mínimo possível de carga à thread de emulação (EmuThread). Nada
+    pesado — I/O de socket, serialização JSON, logging do tráfego de controle —
+    pode rodar nela.
+  - O trabalho adicionado por quadro deve ser O(1) e sem alocação. Eventos devem
+    apenas sinalizar (flag/atomic/notify); a codificação e o envio acontecem em
+    outra thread.
+  - Capturas de tela e leituras grandes são sob demanda, nunca por quadro.
+  - Sem cliente conectado/assinante, não deve haver custo por quadro.
+
+  ## Arquitetura do MCP (Python) — diretrizes obrigatórias
+
+  Aplicam-se ao projeto do MCP (servidor em reverse-ds). Independentes das
+  diretrizes do melonDS acima (que são C++). Não há UI, então MVC não se aplica.
+
+  - **Hexagonal (ports & adapters)**: o domínio (workflows de RE e tipos) NÃO
+    depende de I/O. As bordas são adaptadores atrás de "portas" (interfaces),
+    usando `typing.Protocol` (`@runtime_checkable` quando preciso) — NÃO ABCs:
+    cliente do canal de controle (socket), cliente do gdb, parser NitroFS (FAT/FNT),
+    carregador de símbolos (.map) e o transporte MCP. O domínio depende de
+    abstrações, não de implementações concretas.
+  - **SOLID**: responsabilidade única por classe/módulo; inversão de dependência
+    nas portas.
+  - **Domínios bem separados**: um módulo por domínio — `control` (canal de
+    controle), `debug` (gdb), `cartfs` (NitroFS/FAT/FNT), `symbols`, `workflows`
+    (RE), `bridge` (conexões/ciclo de vida) e `mcp` (exposição de tools). Cada
+    domínio expõe uma interface clara; sem acoplamento cruzado confuso.
+  - **Dados tipados**: priorizar `@dataclass(frozen=True, slots=True)` (e `StrEnum`)
+    para os tipos do domínio (ex.: `CartRead`, `Symbol`, `FileEntry`,
+    `WatchpointHit`) em vez de dicts/tuplas soltos. Comportamento em objetos/serviços;
+    evitar funções soltas sem dono. Tipos completos em toda a superfície.
+  - **YAGNI / DRY**: só o que o spec pede; nada de abstrações/parâmetros "por via
+    das dúvidas"; não duplicar lógica.
+  - **Testável sem o emulador**: o domínio deve ser testável com adaptadores
+    mockados (via as portas).
+  - **Python**: **3.14** (estável, ecossistema maduro). Fixar em `requires-python`
+    do `pyproject.toml` e na imagem/venv. Evitar 3.15 até as libs/wheels
+    acompanharem.
+  - **Dependências**: gerenciador **`uv`** (`pyproject.toml` + `uv.lock`). Não usar
+    pip/poetry nem `requirements.txt` solto.
+  - **Bibliotecas**: preferir libs maduras da comunidade a escrever do zero —
+    antes de codar algo, procure uma lib que já resolva; não reinventar.
+  - **Docker**: o MCP roda em contêiner; as dependências **NÃO** são instaladas no
+    host. Base recomendada: **`python:3.x-slim`** (glibc, wheels prontas). Alpine
+    só se todas as deps tiverem wheel musl (musl causa atrito; e o backend de
+    debug precisa do `gdb-multiarch`, pacote de sistema). O contêiner acessa o
+    canal de controle por **bind-mount do socket Unix** e o stub GDB pela **rede
+    do host**.
+  - **Testes locais**: rodar em um **venv separado** (via `uv`), nunca instalar no host.
+
+  Docstrings e comentários (seguir o padrão do `previewer`):
+  - Docstrings no estilo **Google** (cabeçalhos de seção em inglês), com `Parameters:`
+    e `Returns:` e o **tipo entre parênteses** — ex.:
+      def create(self, project_id: uuid.UUID) -> Change:
+          """Create a change and return the persisted row.
+
+          Parameters:
+              project_id (uuid.UUID): Project the change belongs to.
+
+          Returns:
+              Change: The persisted change row.
+          """
+  - Módulo e classe: resumo curto em uma linha; a classe pode ter um parágrafo
+    explicando a responsabilidade e um bloco `Note:` quando fizer sentido.
+  - Texto em português (diretriz de idioma); cabeçalhos de seção em inglês.
+  - **Comentários**: esparsos, só quando o "porquê" não é óbvio — nunca explicar o
+    "o quê" (código e tipos já dizem). Sem comentários redundantes.
+
+  Referência: para o parser NitroFS (FAT/FNT), use o código-fonte do **ndstool**
+  em `~/ndstool` como base — NÃO inferir o formato.
+
+rules:
+  proposal:
+    - Seja conciso; foco no "porquê", não no "como".
+  design:
+    - Justifique cada decisão contra a arquitetura existente e aponte qualquer coisa que toque o núcleo.
+    - Registre as alternativas consideradas e por que foram descartadas.
+    - Prefira reúso das APIs existentes a mecanismos novos.
+  tasks:
+    - Cada tarefa deve declarar como verificar a conclusão (teste, comando ou comportamento observável).
+    - Não inclua refatorações não relacionadas ao change.
+    - Ordene por dependência; tarefas pequenas o bastante para uma sessão.
+
+operations:
+  apply:
+    guidance:
+      - Mantenha o diff mínimo e confinado ao escopo do change.
+      - Não altere o comportamento de emulação; rode o build e os testes de smoke existentes antes de concluir.
+      - Não reformate código não relacionado nem introduza abstrações especulativas.
+  archive:
+    guidance:
+      - Resuma o que mudou e confirme que não houve regressão de comportamento.
