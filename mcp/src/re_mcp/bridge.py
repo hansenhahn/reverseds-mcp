@@ -6,6 +6,7 @@ is only opened on the first call, so the MCP starts even without the emulator ru
 from .config import Config
 from .application.ports import CartFs, ControlChannel, Debugger, FileStore, Overlays
 from .application.snapshots import Snapshots
+from .domain.io import IoMap
 from .domain.symbols import SymbolTable
 from .infra.control import UnixControlChannel
 from .infra.files import OutDir
@@ -29,6 +30,7 @@ class Bridge:
         self._symbols = SymbolTable([])
         self._files: OutDir | None = None
         self._snapshots: Snapshots | None = None
+        self._io_map: IoMap | None = None
 
     @property
     def config(self) -> Config:
@@ -52,6 +54,16 @@ class Bridge:
         if self._snapshots is None:
             self._snapshots = Snapshots(self.debugger(), self.files())
         return self._snapshots
+
+    def io_map(self) -> IoMap:
+        """Return the IO register map (built on the first call, at the composition root).
+
+        Returns:
+            IoMap: The IO map.
+        """
+        if self._io_map is None:
+            self._io_map = IoMap.default()
+        return self._io_map
 
     def files(self) -> FileStore:
         """Return the artifact storage (output directory).

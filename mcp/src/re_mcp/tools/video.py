@@ -29,7 +29,7 @@ def video_state(engine: str = "A") -> dict:
         dict: ``{"engine", "screen", "dispcnt", "bgs", "master_bright"}`` or ``{"error", "hint"?}``.
     """
     try:
-        state = VideoReader(bridge.debugger()).state(engine)
+        state = VideoReader(bridge.debugger(), bridge.io_map()).state(engine)
     except DebugError as exc:
         return debug_error(exc)
     return {
@@ -52,7 +52,7 @@ def vram_layout() -> dict:
         dict: ``{"bindings": [...]}`` or ``{"error", "hint"?}``.
     """
     try:
-        bindings = VideoReader(bridge.debugger()).vram_layout()
+        bindings = VideoReader(bridge.debugger(), bridge.io_map()).vram_layout()
     except DebugError as exc:
         return debug_error(exc)
     return {"bindings": [_binding_dict(b) for b in bindings]}
@@ -70,7 +70,7 @@ def read_vram(addr: int, size: int) -> dict:
         dict: ``{"addr", "size", "hex"}`` or ``{"error", "hint"?}``.
     """
     try:
-        data = VideoReader(bridge.debugger()).read_vram(addr, size)
+        data = VideoReader(bridge.debugger(), bridge.io_map()).read_vram(addr, size)
     except DebugError as exc:
         return debug_error(exc)
     return {"addr": addr, "size": len(data), "hex": data.hex()}

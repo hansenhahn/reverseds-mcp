@@ -1,9 +1,11 @@
 """Pure IO decode tests (schema + VRAM layout) — without the emulator."""
-from re_mcp.domain.io import DecodedRegister, decode_io, register_at, vram_layout
+from re_mcp.domain.io import DecodedRegister, IoMap, vram_layout
+
+_MAP = IoMap.default()
 
 
 def _decode(addr: int, raw: int, size: int) -> DecodedRegister:
-    decoded = decode_io(addr, raw.to_bytes(size, "little"))
+    decoded = _MAP.decode(addr, raw.to_bytes(size, "little"))
     assert decoded is not None
     return decoded
 
@@ -44,7 +46,7 @@ def test_disp3dcnt_smoke_value() -> None:
 
 
 def test_vramcnt_smoke_values() -> None:
-    """VRAMCNT A..I decode to their enable/MST/offset fields."""
+    """VRAMCNT A/B/C and H decode to their enable/MST/offset fields; 0x247 is WRAMCNT."""
     assert _fields(_decode(0x04000240, 0x83, 1)) == {"mst": 3, "offset": 0, "enable": 1}
     assert _fields(_decode(0x04000241, 0x8B, 1)) == {"mst": 3, "offset": 1, "enable": 1}
     assert _fields(_decode(0x04000242, 0x80, 1)) == {"mst": 0, "offset": 0, "enable": 1}
@@ -54,8 +56,8 @@ def test_vramcnt_smoke_values() -> None:
 
 def test_unknown_address_returns_none() -> None:
     """An address outside the schema is not decodable."""
-    assert decode_io(0x0400FFFF, b"\x00\x00\x00\x00") is None
-    assert register_at(0x0400FFFF) is None
+    assert _MAP.decode(0x0400FFFF, b"\x00\x00\x00\x00") is None
+    assert _MAP.register_at(0x0400FFFF) is None
 
 
 def test_vram_layout_smoke() -> None:

@@ -1,7 +1,7 @@
 """Application service: decode video state and VRAM layout (over the Debugger port)."""
 from dataclasses import dataclass
 
-from ..domain.io import DecodedRegister, VramBinding, decode_io, vram_layout
+from ..domain.io import DecodedRegister, IoMap, VramBinding, vram_layout
 from .ports import Debugger
 
 # VRAMCNT_A..I: A..G at 0x240..0x246, H at 0x248, I at 0x249 (WRAMCNT at 0x247).
@@ -28,16 +28,18 @@ class VideoState:
 class VideoReader:
     """Service: read video registers and the VRAM layout through the Debugger."""
 
-    def __init__(self, debugger: Debugger) -> None:
-        """Build the service over a debug backend.
+    def __init__(self, debugger: Debugger, io_map: IoMap) -> None:
+        """Build the service.
 
         Parameters:
             debugger (Debugger): A connected debug backend.
+            io_map (IoMap): The IO register map.
         """
         self._debugger = debugger
+        self._io_map = io_map
 
     def _decode(self, addr: int, size: int) -> DecodedRegister:
-        decoded = decode_io(addr, self._debugger.read_memory(addr, size))
+        decoded = self._io_map.decode(addr, self._debugger.read_memory(addr, size))
         assert decoded is not None
         return decoded
 

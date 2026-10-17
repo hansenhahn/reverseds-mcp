@@ -19,7 +19,7 @@ def io_read(addr: int) -> dict:
         dict: ``{"name", "address", "raw", "fields": {...}}`` or ``{"error", "hint"?}``.
     """
     try:
-        register = IoReader(bridge.debugger()).read(addr)
+        register = IoReader(bridge.debugger(), bridge.io_map()).read(addr)
     except UnknownRegister as exc:
         return error(exc, "Use um endereço de IO coberto pelo schema (ex.: 0x04000000).")
     except DebugError as exc:
