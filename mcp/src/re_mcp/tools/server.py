@@ -23,6 +23,29 @@ mcp = MCPServer("re-mcp")
 _OUT_DIR = os.environ.get("RE_MCP_OUT_DIR", "/tmp/re_mcp")
 
 
+_SNAP_DIR = os.path.join(_OUT_DIR, "snapshots")
+
+
+def _error(exc: Exception, hint: str | None = None) -> dict:
+    """Erro padronizado: ``{"error", "hint"?}``."""
+    out: dict = {"error": str(exc)}
+    if hint:
+        out["hint"] = hint
+    return out
+
+
+def _debug_error(exc: Exception) -> dict:
+    """Erro do debugger com dica conforme a causa."""
+    msg = str(exc)
+    if "alvo em execução" in msg:
+        return _error(exc, "Use debug_wait() ou debug_interrupt() antes de outros comandos.")
+    if "gdb não iniciado" in msg:
+        return _error(exc, "Chame debug_connect() primeiro.")
+    if "falha de conexão" in msg or "não conectou" in msg:
+        return _error(exc, "O emulador pode ter reiniciado; reconecte (ou reinicie o melonDS).")
+    return _error(exc)
+
+
 def _control(method: str, params: dict | None = None) -> dict:
     """Chama o canal de controle, convertendo erro em dicionário.
 
@@ -31,12 +54,47 @@ def _control(method: str, params: dict | None = None) -> dict:
         params (dict | None): Parâmetros.
 
     Returns:
-        dict: O resultado, ou ``{"error": ...}``.
+        dict: O resultado, ou ``{"error", "hint"?}``.
     """
     try:
         return _bridge.control().call(method, params)
     except ControlError as exc:
-        return {"error": str(exc)}
+        return _error(exc, "Verifique se o melonDS está rodando com o canal de controle habilitado.")
+
+
+def _snapshot_paths(name: str) -> tuple[str, str]:
+    """Caminhos (bin, json) de um snapshot, com nome saneado."""
+    safe = os.path.basename(name) or "snapshot"
+    base = os.path.join(_SNAP_DIR, safe)
+    return base + ".bin", base + ".json"
+
+
+def _persist_snapshot(name: str, addr: int, data: bytes) -> str | None:
+    """Grava o snapshot em disco; devolve o caminho ou None em falha de I/O."""
+    try:
+        os.makedirs(_SNAP_DIR, exist_ok=True)
+        bin_path, meta_path = _snapshot_paths(name)
+        with open(bin_path, "wb") as handle:
+            handle.write(data)
+        with open(meta_path, "w", encoding="utf-8") as handle:
+            json.dump({"addr": addr, "size": len(data)}, handle)
+        return bin_path
+    except OSError:
+        return None
+
+
+def _load_snapshot(name: str) -> tuple[int, bytes] | None:
+    """Carrega um snapshot do disco (e guarda em RAM), ou None."""
+    bin_path, meta_path = _snapshot_paths(name)
+    if not (os.path.exists(bin_path) and os.path.exists(meta_path)):
+        return None
+    with open(meta_path, encoding="utf-8") as handle:
+        meta = json.load(handle)
+    with open(bin_path, "rb") as handle:
+        data = handle.read()
+    snapshot = (int(meta["addr"]), data)
+    _bridge.snapshots()[name] = snapshot
+    return snapshot
 
 
 @mcp.tool()
@@ -49,24 +107,69 @@ def ping() -> dict:
     try:
         return _bridge.control().call("ping")
     except ControlError as exc:
-        return {"error": str(exc)}
+        return _error(exc, "Verifique se o melonDS está rodando com o canal de controle habilitado.")
 
 
 @mcp.tool()
 def debug_connect(core: str = "arm9") -> dict:
     """Conecta o backend de debug (gdb) ao core escolhido.
 
+    Faz uma leitura de teste do PC após conectar; se o stub não responder,
+    desconecta e reporta erro com dica.
+
     Parameters:
         core (str): ``arm9`` ou ``arm7``.
 
     Returns:
-        dict: ``{"ok": true, "core": ...}`` ou ``{"error": ...}``.
+        dict: ``{"ok": true, "core": ..., "pc": ...}`` ou ``{"error", "hint"?}``.
     """
     try:
-        _bridge.debugger().connect(core)
-        return {"ok": True, "core": core}
+        backend = _bridge.debugger()
+        backend.connect(core)
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
+    try:
+        pc = backend.read_register("pc")
+    except DebugError as exc:
+        try:
+            backend.disconnect()
+        except DebugError:
+            pass
+        return _error(
+            exc,
+            "O stub GDB pode estar travado; reinicie o melonDS (nds-control.sh / nds-debug.sh).",
+        )
+    return {"ok": True, "core": core, "pc": f"0x{pc:08x}"}
+
+
+@mcp.tool()
+def health_check() -> dict:
+    """Checa o canal de controle e o debugger, com dicas de diagnóstico.
+
+    Não cria nem derruba conexões: usa o canal atual e, se o debugger estiver
+    conectado, faz uma leitura de teste do PC.
+
+    Returns:
+        dict: ``{"control": ..., "debug": ...}`` com ``error``/``hint`` por backend.
+    """
+    out: dict = {}
+    try:
+        out["control"] = _bridge.control().call("ping")
+    except ControlError as exc:
+        out["control"] = _error(exc, "O melonDS está rodando com o canal de controle?")
+    debugger = _bridge.debugger()
+    if debugger.is_running():
+        out["debug"] = {"ok": True, "running": True}
+    else:
+        try:
+            pc = debugger.read_register("pc")
+            out["debug"] = {"ok": True, "pc": f"0x{pc:08x}"}
+        except DebugError as exc:
+            out["debug"] = _error(
+                exc,
+                "Chame debug_connect() (ou reinicie o melonDS se o stub caiu).",
+            )
+    return out
 
 
 @mcp.tool()
@@ -83,7 +186,7 @@ def debug_read_register(name: str = "pc") -> dict:
         value = _bridge.debugger().read_register(name)
         return {"name": name, "value": value, "value_hex": f"0x{value:08x}"}
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
 
 
 @mcp.tool()
@@ -101,7 +204,7 @@ def debug_write_register(name: str, value: int) -> dict:
         _bridge.debugger().write_register(name, value)
         return {"ok": True}
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
 
 
 @mcp.tool()
@@ -119,7 +222,7 @@ def mem_read(addr: int, size: int) -> dict:
         data = _bridge.debugger().read_memory(addr, size)
         return {"addr": addr, "size": len(data), "hex": data.hex()}
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
 
 
 @mcp.tool()
@@ -158,7 +261,7 @@ def mem_dump_file(addr: int, size: int, name: str | None = None) -> dict:
     try:
         data = _bridge.debugger().read_memory(addr, size)
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
     os.makedirs(_OUT_DIR, exist_ok=True)
     filename = os.path.basename(name) if name else f"dump_{addr:08x}_{size:x}.bin"
     if not filename.endswith(".bin"):
@@ -191,7 +294,7 @@ def disassemble(addr: int, count: int = 16, mode: str = "arm") -> dict:
     try:
         data = _bridge.debugger().read_memory(addr, size)
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
     try:
         instructions = disasm.disassemble(data, addr, mode, count)
     except ValueError as exc:
@@ -225,7 +328,7 @@ def set_breakpoint(addr: int) -> dict:
     try:
         return {"number": _bridge.debugger().set_breakpoint(addr)}
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
 
 
 @mcp.tool()
@@ -245,7 +348,7 @@ def set_watchpoint(addr: int, kind: str = "write", condition: str | None = None)
     try:
         return {"number": _bridge.debugger().set_watchpoint(addr, kind, condition)}
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
 
 
 @mcp.tool()
@@ -262,7 +365,7 @@ def remove_breakpoint(number: int) -> dict:
         _bridge.debugger().remove(number)
         return {"ok": True}
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
 
 
 @mcp.tool()
@@ -279,7 +382,7 @@ def debug_continue(timeout: float = 30.0) -> dict:
         stopped = _bridge.debugger().continue_(timeout)
         return {"stopped": stopped}
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
 
 
 @mcp.tool()
@@ -297,7 +400,7 @@ def debug_resume() -> dict:
         _bridge.debugger().resume()
         return {"ok": True, "running": True}
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
 
 
 @mcp.tool()
@@ -314,7 +417,7 @@ def debug_wait(timeout: float = 30.0) -> dict:
         stopped = _bridge.debugger().wait_stop(timeout)
         return {"stopped": stopped, "running": not stopped}
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
 
 
 @mcp.tool()
@@ -328,7 +431,7 @@ def debug_step() -> dict:
         _bridge.debugger().step()
         return {"ok": True}
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
 
 
 @mcp.tool()
@@ -342,7 +445,7 @@ def debug_interrupt() -> dict:
         _bridge.debugger().interrupt()
         return {"ok": True}
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
 
 
 @mcp.tool()
@@ -356,7 +459,7 @@ def debug_disconnect() -> dict:
         _bridge.debugger().disconnect()
         return {"ok": True}
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
 
 
 @mcp.tool()
@@ -410,12 +513,12 @@ def input_tap(mask: int, ms: int = 100) -> dict:
     try:
         channel = _bridge.control()
     except ControlError as exc:
-        return {"error": str(exc)}
+        return _error(exc, "Verifique se o melonDS está rodando com o canal de controle habilitado.")
     try:
         input_macros.tap(channel, mask, ms)
         return {"ok": True}
     except ControlError as exc:
-        return {"error": str(exc)}
+        return _error(exc, "Verifique se o melonDS está rodando com o canal de controle habilitado.")
 
 
 @mcp.tool()
@@ -434,7 +537,7 @@ def input_sequence(steps: list[dict]) -> dict:
     try:
         channel = _bridge.control()
     except ControlError as exc:
-        return {"error": str(exc)}
+        return _error(exc, "Verifique se o melonDS está rodando com o canal de controle habilitado.")
     try:
         parsed = [
             input_macros.InputStep(
@@ -476,6 +579,11 @@ def screen_capture(screens: str = "both", format: str = "rgba8") -> dict:
     """
     result = _control("screen.capture", {"screens": screens, "format": format})
     if "error" in result:
+        if "timed out" in str(result["error"]).lower():
+            result["hint"] = (
+                "A captura expirou: a CPU pode estar parada (use debug_resume() ou "
+                "debug_disconnect()) ou o renderer não é software."
+            )
         return result
 
     binary = result.get("binary", {})
@@ -574,7 +682,7 @@ def cart_trace_read(seconds: float = 2.0) -> dict:
     try:
         channel = _bridge.control()
     except ControlError as exc:
-        return {"error": str(exc)}
+        return _error(exc, "Verifique se o melonDS está rodando com o canal de controle habilitado.")
 
     reads: list[dict] = []
     deadline = time.monotonic() + seconds
@@ -615,7 +723,7 @@ def find_writer(addr: int, timeout: float = 30.0, condition: str | None = None) 
     try:
         hit = workflows.find_writer(_bridge.debugger(), addr, timeout, condition)
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
     if hit is None:
         return {"hit": None}
     return {"hit": {"pc": hit.pc, "pc_hex": f"0x{hit.pc:08x}", "registers": hit.registers}}
@@ -637,7 +745,7 @@ def find_reader(addr: int, timeout: float = 30.0, condition: str | None = None) 
     try:
         hit = workflows.find_reader(_bridge.debugger(), addr, timeout, condition)
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
     if hit is None:
         return {"hit": None}
     return {"hit": {"pc": hit.pc, "pc_hex": f"0x{hit.pc:08x}", "registers": hit.registers}}
@@ -658,9 +766,10 @@ def mem_snapshot(name: str, addr: int, size: int) -> dict:
     try:
         data = _bridge.debugger().read_memory(addr, size)
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
     _bridge.snapshots()[name] = (addr, data)
-    return {"ok": True, "name": name, "size": len(data)}
+    path = _persist_snapshot(name, addr, data)
+    return {"ok": True, "name": name, "size": len(data), "path": path}
 
 
 @mcp.tool()
@@ -675,12 +784,14 @@ def state_diff(name: str) -> dict:
     """
     snapshot = _bridge.snapshots().get(name)
     if snapshot is None:
+        snapshot = _load_snapshot(name)
+    if snapshot is None:
         return {"error": f"captura '{name}' não existe"}
     base, before = snapshot
     try:
         after = _bridge.debugger().read_memory(base, len(before))
     except DebugError as exc:
-        return {"error": str(exc)}
+        return _debug_error(exc)
     changes = workflows.diff_regions(before, after, base)
     return {"changes": changes, "count": len(changes)}
 

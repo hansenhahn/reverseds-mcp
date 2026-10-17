@@ -26,3 +26,10 @@ def test_lists_p0_tools() -> None:
     names = asyncio.run(_list_tools())
     for tool in ("debug_resume", "debug_wait", "mem_dump_file"):
         assert tool in names
+
+
+def test_lists_p1_tools() -> None:
+    """As tools dos changes P1 (input macros, disassemble, health-check) estão expostas."""
+    names = asyncio.run(_list_tools())
+    for tool in ("input_tap", "input_sequence", "disassemble", "health_check"):
+        assert tool in names
