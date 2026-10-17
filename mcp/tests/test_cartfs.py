@@ -2,7 +2,7 @@
 import struct
 from pathlib import Path
 
-from re_mcp.domain.cartfs import parse_fat, parse_fnt, parse_header
+from re_mcp.domain.cartfs import Fat, Fnt, NdsHeader
 from re_mcp.infra.ndsrom import NdsRom
 
 
@@ -43,25 +43,26 @@ def _rom(path: Path) -> Path:
 
 def test_parse_header(tmp_path: Path) -> None:
     """O header expõe offsets de FNT/FAT e overlays."""
-    rom = _rom(tmp_path / "header.bin")
-    header = parse_header(rom.read_bytes()[:0x60])
+    header = NdsHeader.from_bytes(_rom(tmp_path / "header.bin").read_bytes()[:0x60])
     assert header.gamecode == "TEST"
     assert header.fnt_offset == 0x60
     assert header.arm9_overlay_size == 32
     assert header.arm7_overlay_size == 0
 
 
-def test_parse_fnt_tree() -> None:
+def test_fnt_tree() -> None:
     """A FNT vira a lista de arquivos com id e caminho."""
-    entries = parse_fnt(_fnt())
-    assert [(e.file_id, e.path) for e in entries] == [(0, "/a.txt"), (1, "/sub/b.bin")]
+    files = Fnt.from_bytes(_fnt()).files
+    assert [(f.file_id, f.path) for f in files] == [(0, "/a.txt"), (1, "/sub/b.bin")]
 
 
-def test_parse_fat_ranges() -> None:
-    """A FAT vira faixas `[start, end)` por id."""
-    fat = parse_fat(_fat())
-    assert (fat[0].start, fat[0].end, fat[0].size) == (0x100, 0x110, 16)
-    assert (fat[1].start, fat[1].end) == (0x200, 0x208)
+def test_fat_ranges() -> None:
+    """A FAT vira faixas `[start, end)` por id, com `contains`."""
+    fat = Fat.from_bytes(_fat())
+    assert (fat.span(0).start, fat.span(0).end, fat.span(0).size) == (0x100, 0x110, 16)
+    assert fat.entries[1].end == 0x208
+    assert fat.entries[0].contains(0x108)
+    assert not fat.entries[0].contains(0x110)
 
 
 def test_ndsrom_list_and_offset(tmp_path: Path) -> None:

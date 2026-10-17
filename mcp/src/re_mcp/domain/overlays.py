@@ -1,7 +1,7 @@
-"""Interpretação nativa das tabelas de overlay (y9/y7) do cartucho NDS.
+"""Tabelas de overlay (y9/y7) do cartucho: entidades e agregado, sem I/O.
 
 Os overlays são descritos pelo header da ROM (`arm9_overlay`/`arm7_overlay`);
-os dados de cada um ficam na FAT como arquivos comuns. Funções puras.
+os dados de cada um ficam na FAT como arquivos comuns.
 """
 import struct
 from dataclasses import dataclass
@@ -20,6 +20,17 @@ class Overlay:
     bss_size: int
     file_id: int
 
+    def covers(self, addr: int) -> bool:
+        """Se ``addr`` cai na RAM ocupada por este overlay.
+
+        Parameters:
+            addr (int): Endereço de RAM.
+
+        Returns:
+            bool: True se ``ram_address <= addr < ram_address + ram_size``.
+        """
+        return self.ram_address <= addr < self.ram_address + self.ram_size
+
 
 @dataclass(frozen=True, slots=True)
 class OverlayHit:
@@ -29,45 +40,54 @@ class OverlayHit:
     offset: int
 
 
-def parse_overlays(data: bytes, core: str) -> list[Overlay]:
-    """Interpreta uma tabela de overlays (32 bytes por entrada).
+class OverlayTable:
+    """Agregado: as entradas de overlay de um core (ARM9/ARM7)."""
 
-    Parameters:
-        data (bytes): Conteúdo da tabela (`arm9_overlay` ou `arm7_overlay`).
-        core (str): ``arm9`` ou ``arm7``, para rotular as entradas.
+    def __init__(self, overlays: list[Overlay]) -> None:
+        self._overlays = overlays
 
-    Returns:
-        list[Overlay]: As entradas de overlay.
-    """
-    overlays: list[Overlay] = []
-    for off in range(0, len(data) - (_ENTRY_SIZE - 1), _ENTRY_SIZE):
-        index, ram, size, bss, _sinit, _sinit_end, file_id, _res = struct.unpack_from(
-            "<8I", data, off
-        )
-        overlays.append(
-            Overlay(
-                core=core,
-                index=index,
-                ram_address=ram,
-                ram_size=size,
-                bss_size=bss,
-                file_id=file_id,
+    @classmethod
+    def from_bytes(cls, data: bytes, core: str) -> "OverlayTable":
+        """Interpreta uma tabela de overlays (32 bytes por entrada).
+
+        Parameters:
+            data (bytes): Conteúdo da tabela (`arm9_overlay` ou `arm7_overlay`).
+            core (str): ``arm9`` ou ``arm7``, para rotular as entradas.
+
+        Returns:
+            OverlayTable: As entradas de overlay.
+        """
+        overlays: list[Overlay] = []
+        for off in range(0, len(data) - (_ENTRY_SIZE - 1), _ENTRY_SIZE):
+            idx, ram, size, bss, _si, _sie, file_id, _res = struct.unpack_from(
+                "<8I", data, off
             )
-        )
-    return overlays
+            overlays.append(
+                Overlay(
+                    core=core,
+                    index=idx,
+                    ram_address=ram,
+                    ram_size=size,
+                    bss_size=bss,
+                    file_id=file_id,
+                )
+            )
+        return cls(overlays)
 
+    def entries(self) -> list[Overlay]:
+        """As entradas de overlay."""
+        return list(self._overlays)
 
-def resolve_address(overlays: list[Overlay], addr: int) -> OverlayHit | None:
-    """Resolve um endereço de RAM para o overlay que o contém.
+    def for_address(self, addr: int) -> OverlayHit | None:
+        """Resolve um endereço de RAM para o overlay que o contém.
 
-    Parameters:
-        overlays (list[Overlay]): As entradas (de um core).
-        addr (int): Endereço de RAM.
+        Parameters:
+            addr (int): Endereço de RAM.
 
-    Returns:
-        OverlayHit | None: O overlay e o deslocamento dentro dele, ou None.
-    """
-    for overlay in overlays:
-        if overlay.ram_address <= addr < overlay.ram_address + overlay.ram_size:
-            return OverlayHit(overlay=overlay, offset=addr - overlay.ram_address)
-    return None
+        Returns:
+            OverlayHit | None: O overlay e o deslocamento, ou None.
+        """
+        for overlay in self._overlays:
+            if overlay.covers(addr):
+                return OverlayHit(overlay, addr - overlay.ram_address)
+        return None

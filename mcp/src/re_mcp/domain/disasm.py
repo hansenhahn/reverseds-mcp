@@ -1,7 +1,7 @@
-"""Desassemblagem ARM/Thumb (domínio puro, sem I/O).
+"""Desassemblagem ARM/Thumb (domínio puro, wrapper do capstone).
 
-Usa `capstone`. Recebe bytes já lidos (a leitura de memória é responsabilidade do
-adaptador), de modo que o domínio fica testável sem o emulador.
+Recebe bytes já lidos (a leitura de memória é do adaptador), de modo que o domínio
+fica testável sem o emulador.
 """
 from dataclasses import dataclass
 
@@ -21,37 +21,40 @@ class Instruction:
     op_str: str
 
 
-def disassemble(
-    code: bytes, addr: int, mode: str = "arm", count: int | None = None
-) -> list[Instruction]:
-    """Desmonta ``code`` (a partir de ``addr``) no modo ``arm`` ou ``thumb``.
+class Disassembler:
+    """Serviço: desmonta ARM/Thumb a partir dos bytes do código."""
 
-    Parameters:
-        code (bytes): Bytes do código.
-        addr (int): Endereço da primeira instrução.
-        mode (str): ``arm`` ou ``thumb`` (default ``arm``).
-        count (int | None): Máximo de instruções (None = todas as que couberem).
+    def disassemble(
+        self, code: bytes, addr: int, mode: str = "arm", count: int | None = None
+    ) -> list[Instruction]:
+        """Desmonta ``code`` (a partir de ``addr``) no modo ``arm`` ou ``thumb``.
 
-    Returns:
-        list[Instruction]: As instruções, em ordem.
+        Parameters:
+            code (bytes): Bytes do código.
+            addr (int): Endereço da primeira instrução.
+            mode (str): ``arm`` ou ``thumb`` (default ``arm``).
+            count (int | None): Máximo de instruções (None = todas as que couberem).
 
-    Raises:
-        ValueError: Se o modo for inválido.
-    """
-    if mode not in _MODES:
-        raise ValueError(f"modo inválido: {mode!r} (use 'arm' ou 'thumb')")
-    md = Cs(CS_ARCH_ARM, _MODES[mode])
-    out: list[Instruction] = []
-    for insn in md.disasm(code, addr):
-        out.append(
-            Instruction(
-                address=insn.address,
-                size=insn.size,
-                bytes_hex=insn.bytes.hex(),
-                mnemonic=insn.mnemonic,
-                op_str=insn.op_str,
+        Returns:
+            list[Instruction]: As instruções, em ordem.
+
+        Raises:
+            ValueError: Se o modo for inválido.
+        """
+        if mode not in _MODES:
+            raise ValueError(f"modo inválido: {mode!r} (use 'arm' ou 'thumb')")
+        md = Cs(CS_ARCH_ARM, _MODES[mode])
+        out: list[Instruction] = []
+        for insn in md.disasm(code, addr):
+            out.append(
+                Instruction(
+                    address=insn.address,
+                    size=insn.size,
+                    bytes_hex=insn.bytes.hex(),
+                    mnemonic=insn.mnemonic,
+                    op_str=insn.op_str,
+                )
             )
-        )
-        if count is not None and len(out) >= count:
-            break
-    return out
+            if count is not None and len(out) >= count:
+                break
+        return out
