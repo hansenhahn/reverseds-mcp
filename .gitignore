@@ -1,5 +1,6 @@
-# Sem documentação (por enquanto)
+# Sem documentação (por enquanto) — exceto as specs do openspec
 *.md
+!openspec/**/*.md
 *.html
 *.bmp
 
@@ -12,6 +13,5 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Specs / editor
-openspec/
+# Editor
 .opencode/

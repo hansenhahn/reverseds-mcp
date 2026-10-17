@@ -10,7 +10,8 @@ from mcp.server.mcpserver import MCPServer
 
 from ..bridge import Bridge
 from ..config import Config
-from ..domain import workflows
+from ..domain import disasm, workflows
+from ..domain import input as input_macros
 from ..infra.control import ControlError
 from ..infra.gdb import DebugError
 from ..infra.nitrofs import NitroFsError
@@ -169,6 +170,46 @@ def mem_dump_file(addr: int, size: int, name: str | None = None) -> dict:
     with open(path + ".json", "w", encoding="utf-8") as handle:
         json.dump(meta, handle)
     return meta
+
+
+@mcp.tool()
+def disassemble(addr: int, count: int = 16, mode: str = "arm") -> dict:
+    """Desmonta ``count`` instruções a partir de ``addr`` (ARM ou Thumb).
+
+    Lê a memória pelo backend de debug — o alvo precisa estar **parado**.
+
+    Parameters:
+        addr (int): Endereço inicial.
+        count (int): Quantidade de instruções (1..256).
+        mode (str): ``arm`` ou ``thumb``.
+
+    Returns:
+        dict: ``{"addr", "mode", "instructions": [...]}`` ou ``{"error": ...}``.
+    """
+    count = max(1, min(count, 256))
+    size = count * 4
+    try:
+        data = _bridge.debugger().read_memory(addr, size)
+    except DebugError as exc:
+        return {"error": str(exc)}
+    try:
+        instructions = disasm.disassemble(data, addr, mode, count)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return {
+        "addr": addr,
+        "mode": mode,
+        "instructions": [
+            {
+                "address": f"0x{item.address:08x}",
+                "size": item.size,
+                "bytes": item.bytes_hex,
+                "mnemonic": item.mnemonic,
+                "op_str": item.op_str,
+            }
+            for item in instructions
+        ],
+    }
 
 
 @mcp.tool()
@@ -353,6 +394,60 @@ def input_release() -> dict:
         dict: ``{"ok": true}`` ou ``{"error": ...}``.
     """
     return _control("input.release")
+
+
+@mcp.tool()
+def input_tap(mask: int, ms: int = 100) -> dict:
+    """Aperta a(s) tecla(s) da máscara por ``ms`` e solta (macro de input).
+
+    Parameters:
+        mask (int): Máscara active-low (ex.: ``0xFF7`` = Start).
+        ms (int): Duração do toque em milissegundos.
+
+    Returns:
+        dict: ``{"ok": true}`` ou ``{"error": ...}``.
+    """
+    try:
+        channel = _bridge.control()
+    except ControlError as exc:
+        return {"error": str(exc)}
+    try:
+        input_macros.tap(channel, mask, ms)
+        return {"ok": True}
+    except ControlError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def input_sequence(steps: list[dict]) -> dict:
+    """Executa uma sequência de passos ``{mask, ms, after_ms}`` (macro de input).
+
+    Cada passo aperta ``mask``, espera ``ms``, solta e espera ``after_ms``. Passo
+    sem ``mask`` apenas espera. O input é solto ao final (mesmo em erro).
+
+    Parameters:
+        steps (list[dict]): Lista ordenada de passos.
+
+    Returns:
+        dict: ``{"ok": true, "steps": N}`` ou ``{"error": ...}``.
+    """
+    try:
+        channel = _bridge.control()
+    except ControlError as exc:
+        return {"error": str(exc)}
+    try:
+        parsed = [
+            input_macros.InputStep(
+                ms=int(step.get("ms", 100)),
+                after_ms=int(step.get("after_ms", 0)),
+                mask=(int(step["mask"]) if step.get("mask") is not None else None),
+            )
+            for step in steps
+        ]
+        input_macros.sequence(channel, parsed)
+        return {"ok": True, "steps": len(parsed)}
+    except (ControlError, ValueError) as exc:
+        return {"error": str(exc)}
 
 
 @mcp.tool()
