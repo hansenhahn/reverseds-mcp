@@ -7,11 +7,14 @@ os outros primitivos de observação dependem de parar num frame conhecido.
 
 ## What Changes
 
-- `emu.step_frame(N)`: avança exatamente N quadros e **para**, com o framebuffer do
-  último quadro já composto.
-- `emu.run_until_vblank()`: roda até o próximo **vblank** e para (framebuffer composto).
-- `emu.pause_at_next_frame()`: agenda uma parada no fim do quadro atual.
+- `emu.step_frame(N)`: avança exatamente `N` quadros e **para**, com o framebuffer do
+  último quadro já composto. (Avançar N numa chamada evita o anti-padrão de passo-a-passo
+  a 60 Hz via canal de controle.)
+- `emu.pause_at_next_frame()`: agenda uma parada no fim do quadro corrente — útil quando a
+  emulação já está **rodando** (não perder o frame).
 - A parada SHALL ocorrer no **vblank**, com o framebuffer composto (pronto para captura).
+- "Esperar o próximo vblank" é um **primitivo interno** que essas operações usam — NÃO é
+  exposto como tool (equivale a `step_frame(1)` e viraria 60 chamadas/s).
 - Emulador (fork) expondo os métodos no canal de controle; tools MCP correspondentes.
 - **Não altera o comportamento de emulação**; sem custo por quadro quando não usado.
 

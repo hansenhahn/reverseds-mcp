@@ -14,17 +14,10 @@ O sistema SHALL permitir avançar exatamente `N` quadros e parar, com o framebuf
 - **WHEN** o agente pede para avançar `N` quadros
 - **THEN** a emulação avança exatamente `N` quadros e para no vblank, com o framebuffer composto
 
-### Requirement: Rodar até o vblank
-
-O sistema SHALL permitir rodar até o próximo vblank e parar.
-
-#### Scenario: Parar no vblank
-- **WHEN** o agente pede para rodar até o vblank
-- **THEN** a emulação para no próximo vblank, com o framebuffer composto
-
 ### Requirement: Parar no próximo quadro
 
-O sistema SHALL permitir agendar uma parada no fim do quadro corrente.
+O sistema SHALL permitir agendar uma parada no fim do quadro corrente, para quando a
+emulação já está rodando.
 
 #### Scenario: Agendar parada
 - **WHEN** o agente agenda parar no próximo quadro
