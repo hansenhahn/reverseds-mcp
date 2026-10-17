@@ -12,7 +12,7 @@
 ## 3. MCP — verificação
 
 - [x] 3.1 Com gdb anexado e parado: `screen_capture` (0,00s) e `savestate_save` (0,17s) respondem (não expiram). Verificar: smoke com o gdb anexado.
-- [ ] 3.2 Fluxo copiloto completo: congelar frame (frame-control) → capturar → armar watchpoint → ler o código, sem desconectar o gdb. Verificar: sequência ponta a ponta.
+- [x] 3.2 Fluxo copiloto completo: congelar frame (frame-control) → capturar → armar watchpoint → ler o código, sem desconectar o gdb. Verificar: sequência ponta a ponta.
 
 ## 4. Validação
 
