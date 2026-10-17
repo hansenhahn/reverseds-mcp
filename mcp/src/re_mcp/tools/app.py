@@ -3,10 +3,32 @@ from mcp.server.mcpserver import MCPServer
 
 from ..bridge import Bridge
 from ..config import Config
+from ..domain.io import DecodedRegister
 from ..infra.control import ControlError
 
 bridge = Bridge(Config.from_env())
 mcp = MCPServer("re-mcp")
+
+
+def reg_dict(register: DecodedRegister) -> dict:
+    """Serialize a decoded IO register for a tool response.
+
+    Parameters:
+        register (DecodedRegister): The decoded register.
+
+    Returns:
+        dict: The serialized register.
+    """
+    return {
+        "name": register.name,
+        "address": f"0x{register.address:08x}",
+        "raw": f"0x{register.raw:x}",
+        "description": register.description,
+        "fields": {
+            f.name: {"value": f.value, "meaning": f.meaning, "description": f.description}
+            for f in register.fields
+        },
+    }
 
 
 def error(exc: Exception, hint: str | None = None) -> dict:
