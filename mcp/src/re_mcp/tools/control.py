@@ -242,6 +242,23 @@ def emu_resume() -> dict:
 
 
 @mcp.tool()
+def emu_step_frame(n: int = 1) -> dict:
+    """Advance exactly ``n`` frames and stop (deterministic frame step).
+
+    Blocks until the ``n`` frames have been emulated, then leaves the emulator
+    paused with the framebuffer composed (so a capture right after reflects the
+    frozen frame). Resume with ``emu_resume``. Requires the emulator running.
+
+    Parameters:
+        n (int): Number of frames to advance (>= 1).
+
+    Returns:
+        dict: ``{"ok": true, "frames": n}`` or ``{"error": ...}``.
+    """
+    return control_call("emu.step_frame", {"n": n})
+
+
+@mcp.tool()
 def cart_trace_start(batch: int = 256, timeout_ms: int = 100) -> dict:
     """Start the cartridge read trace (overwrites any previous one).
 
