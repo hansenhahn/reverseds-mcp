@@ -1,4 +1,4 @@
-"""VRAM bank→window layout, following GBATEK's "VRAM Bank Control" table (pure)."""
+"""VRAM bank→window layout (pure)."""
 from dataclasses import dataclass
 
 

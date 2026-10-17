@@ -12,6 +12,50 @@ class RegField:
     values: tuple[tuple[int, str], ...] = ()
     description: str = ""
 
+    @classmethod
+    def bit(
+        cls,
+        name: str,
+        low: int,
+        values: tuple[tuple[int, str], ...] = (),
+        description: str = "",
+    ) -> "RegField":
+        """Build a single-bit field.
+
+        Parameters:
+            name (str): Field name.
+            low (int): The bit position.
+            values (tuple[tuple[int, str], ...]): Optional value names.
+            description (str): Human description.
+
+        Returns:
+            RegField: The field.
+        """
+        return cls(name, low, low, values, description)
+
+    @classmethod
+    def bits(
+        cls,
+        name: str,
+        low: int,
+        high: int,
+        values: tuple[tuple[int, str], ...] = (),
+        description: str = "",
+    ) -> "RegField":
+        """Build a multi-bit field.
+
+        Parameters:
+            name (str): Field name.
+            low (int): The lowest bit.
+            high (int): The highest bit (inclusive).
+            values (tuple[tuple[int, str], ...]): Optional value names.
+            description (str): Human description.
+
+        Returns:
+            RegField: The field.
+        """
+        return cls(name, low, high, values, description)
+
 
 @dataclass(frozen=True, slots=True)
 class DecodedField:

@@ -9,8 +9,8 @@ from .app import bridge, debug_error, error, mcp, reg_dict
 def io_read(addr: int) -> dict:
     """Read and decode a memory-mapped IO register.
 
-    The target must be **stopped**. The register is decoded into named fields from a
-    GBATEK-derived schema (e.g. DISPCNT, DISP3DCNT, POWCNT1, VRAMCNT, DMA registers).
+    The target must be **stopped**. The register is decoded into named fields from the
+    schema (e.g. DISPCNT, DISP3DCNT, POWCNT1, VRAMCNT, DMA registers).
 
     Parameters:
         addr (int): The IO address (e.g. ``0x04000000`` for DISPCNT A).

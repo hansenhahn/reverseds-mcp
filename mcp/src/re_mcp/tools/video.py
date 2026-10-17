@@ -45,8 +45,8 @@ def video_state(engine: str = "A") -> dict:
 def vram_layout() -> dict:
     """Resolve the current ``VRAMCNT`` into the bank→window layout.
 
-    The target must be **stopped**. Note: GBATEK marks ``VRAMCNT`` as write-only, but
-    melonDS exposes the value on reads, so the layout can be read live.
+    The target must be **stopped**. Note: ``VRAMCNT`` is write-only on real hardware,
+    but melonDS exposes the value on reads, so the layout can be read live.
 
     Returns:
         dict: ``{"bindings": [...]}`` or ``{"error", "hint"?}``.
