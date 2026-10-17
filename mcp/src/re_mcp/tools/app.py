@@ -23,8 +23,10 @@ def reg_dict(register: DecodedRegister) -> dict:
         "name": register.name,
         "address": f"0x{register.address:08x}",
         "raw": f"0x{register.raw:x}",
+        "description": register.description,
         "fields": {
-            f.name: {"value": f.value, "meaning": f.meaning} for f in register.fields
+            f.name: {"value": f.value, "meaning": f.meaning, "description": f.description}
+            for f in register.fields
         },
     }
 

@@ -1,4 +1,4 @@
-"""VRAM/WRAM bank control register definitions."""
+"""VRAM/WRAM bank control — GBATEK "VRAMCNT_A..I" and "WRAMCNT"."""
 from ..decode import Register
 from ._fields import bit, bits
 
@@ -16,12 +16,23 @@ def vram_registers() -> list[Register]:
 
     Returns:
         list[Register]: VRAMCNT_A..I and WRAMCNT.
+
+    Note:
+        GBATEK marks the VRAMCNT registers as write-only; melonDS exposes the stored
+        value on reads, so they can be decoded live.
     """
-    vramcnt = (bits("mst", 0, 2), bits("offset", 3, 4), bit("enable", 7))
-    wramcnt = (bits("wram", 0, 1, ((0, "4K arm7"), (1, "2K ea"), (2, "arm9 only"))),)
+    vramcnt = (
+        bits("mst", 0, 2, (), "Mapping mode (bank-dependent; see the GBATEK table)"),
+        bits("offset", 3, 4, (), "Offset (bank-dependent)"),
+        bit("enable", 7, (), "Bank enable"),
+    )
+    wramcnt = (
+        bits("wram", 0, 1, ((0, "4K arm7"), (1, "2K ea"), (2, "arm9 only")),
+             "WRAM mapping"),
+    )
     registers = [
-        Register(f"VRAMCNT_{bank}", addr, 1, vramcnt)
+        Register(f"VRAMCNT_{bank}", addr, 1, vramcnt, f"VRAM bank {bank} control")
         for bank, addr in _VRAMCNT_ADDR.items()
     ]
-    registers.append(Register("WRAMCNT", _WRAMCNT_ADDR, 1, wramcnt))
+    registers.append(Register("WRAMCNT", _WRAMCNT_ADDR, 1, wramcnt, "WRAM bank control"))
     return registers

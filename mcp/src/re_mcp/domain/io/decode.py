@@ -4,42 +4,46 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class RegField:
-    """A bitfield: name, inclusive bit range and optional value names."""
+    """A bitfield: name, inclusive bit range, optional value names and a description."""
 
     name: str
     low: int
     high: int
     values: tuple[tuple[int, str], ...] = ()
+    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class DecodedField:
-    """A decoded bitfield: name, value and its meaning when the schema names it."""
+    """A decoded bitfield: name, value, named meaning and human description."""
 
     name: str
     value: int
     meaning: str | None
+    description: str
 
 
 @dataclass(frozen=True, slots=True)
 class DecodedRegister:
-    """A decoded register: raw value plus the named fields."""
+    """A decoded register: raw value, named fields and the register description."""
 
     name: str
     address: int
     size: int
     raw: int
     fields: tuple[DecodedField, ...]
+    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class Register:
-    """A memory-mapped register: name, address, size and bitfields."""
+    """A memory-mapped register: name, address, size, bitfields and a description."""
 
     name: str
     address: int
     size: int
     fields: tuple[RegField, ...]
+    description: str = ""
 
     def decode(self, data: bytes) -> DecodedRegister:
         """Decode this register from the bytes read at its address.
@@ -56,8 +60,12 @@ class Register:
             width = spec.high - spec.low + 1
             value = (raw >> spec.low) & ((1 << width) - 1)
             meaning = dict(spec.values).get(value) if spec.values else None
-            decoded.append(DecodedField(spec.name, value, meaning))
-        return DecodedRegister(self.name, self.address, self.size, raw, tuple(decoded))
+            decoded.append(
+                DecodedField(spec.name, value, meaning, spec.description)
+            )
+        return DecodedRegister(
+            self.name, self.address, self.size, raw, tuple(decoded), self.description
+        )
 
 
 class UnknownRegister(ValueError):

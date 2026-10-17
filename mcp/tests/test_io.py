@@ -54,6 +54,14 @@ def test_vramcnt_smoke_values() -> None:
     assert _fields(_decode(0x04000247, 0x03, 1)) == {"wram": 3}
 
 
+def test_descriptions_flow_through() -> None:
+    """The register and field descriptions from the schema reach the decode."""
+    decoded = _decode(0x04000000, 0x4001111D, 4)
+    assert decoded.description == "LCD control (engine A)"
+    by_name = {f.name: f for f in decoded.fields}
+    assert by_name["obj_1d_mapping"].description == "OBJ tile VRAM mapping (0=2D, 1=1D)"
+
+
 def test_unknown_address_returns_none() -> None:
     """An address outside the schema is not decodable."""
     assert _MAP.decode(0x0400FFFF, b"\x00\x00\x00\x00") is None
