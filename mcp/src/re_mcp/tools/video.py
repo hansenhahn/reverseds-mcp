@@ -1,8 +1,15 @@
-"""MCP tools for video: `video_state`, `vram_layout` and `read_vram`."""
+"""MCP tools for video: `video_state`, `vram_layout`, `read_vram` and `render_layer`."""
 from ..application.video import VideoReader
 from ..domain.io import VramBinding
 from ..infra.gdb import DebugError
-from .app import bridge, debug_error, mcp, reg_dict
+from .app import (
+    bridge,
+    control_call,
+    debug_error,
+    mcp,
+    reg_dict,
+    save_framebuffer_pngs,
+)
 
 
 def _binding_dict(binding: VramBinding) -> dict:
@@ -74,3 +81,40 @@ def read_vram(addr: int, size: int) -> dict:
     except DebugError as exc:
         return debug_error(exc)
     return {"addr": addr, "size": len(data), "hex": data.hex()}
+
+
+@mcp.tool()
+def render_layer(
+    engine: str = "A", layer: str = "obj", screens: str = "both", format: str = "rgba8"
+) -> dict:
+    """Render a single video layer of the current frame and save it as PNG.
+
+    Uses the **emulator's own renderer** as an oracle (not a reimplementation), drawing
+    only the requested layer (engine ``A``/``B`` x ``bg0``-``bg3``/``obj``/``3d``). It
+    does not execute CPU code and does not disturb the displayed frame; the emulator
+    keeps running (or stays paused) as before. Combine with ``emu_pause`` or
+    ``emu_step_frame`` to render a specific frozen frame.
+
+    Parameters:
+        engine (str): ``A`` or ``B``.
+        layer (str): ``bg0``, ``bg1``, ``bg2``, ``bg3``, ``obj`` or ``3d`` (3D: engine A only).
+        screens (str): ``top``, ``bottom`` or ``both``.
+        format (str): ``rgba8`` or ``bgra8``.
+
+    Returns:
+        dict: ``{"paths": [...]}`` with the saved PNGs, or ``{"error", "hint"?}``.
+    """
+    result = control_call(
+        "video.render_layer",
+        {"engine": engine, "layer": layer, "screens": screens, "format": format},
+    )
+    if "error" in result:
+        if "timed out" in str(result["error"]).lower():
+            result["hint"] = (
+                "O render expirou: a captura de tela exige o renderer de software."
+            )
+        return result
+
+    return save_framebuffer_pngs(
+        result, format=format, prefix=f"layer_{engine}_{layer}"
+    )

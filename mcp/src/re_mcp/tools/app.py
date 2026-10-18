@@ -1,5 +1,8 @@
 """Base for the MCP tools: server, bridge and shared error helpers."""
+import io
+
 from mcp.server.mcpserver import MCPServer
+from PIL import Image
 
 from ..bridge import Bridge
 from ..config import Config
@@ -82,3 +85,35 @@ def control_call(method: str, params: dict | None = None) -> dict:
         return error(
             exc, "Verifique se o melonDS está rodando com o canal de controle habilitado."
         )
+
+
+def save_framebuffer_pngs(
+    result: dict, *, format: str, prefix: str
+) -> dict:
+    """Encode a control-channel framebuffer result into PNG files.
+
+    Parameters:
+        result (dict): A ``result`` dict holding a ``binary`` payload (width, height, data).
+        format (str): ``rgba8`` or ``bgra8``.
+        prefix (str): File name prefix; an index suffix is appended per screen.
+
+    Returns:
+        dict: ``{"paths": [...]}`` with the saved PNGs.
+    """
+    binary = result.get("binary", {})
+    data = binary.get("data", b"")
+    width = binary.get("width", 256)
+    height = binary.get("height", 192)
+    raw_mode = "RGBA" if format == "rgba8" else "BGRA"
+    frame = width * height * 4
+    paths: list[str] = []
+    for index in range(len(data) // frame):
+        image = Image.frombuffer(
+            "RGBA", (width, height),
+            data[index * frame:(index + 1) * frame],
+            "raw", raw_mode, 0, 1,
+        )
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        paths.append(bridge.files().write_bytes(f"{prefix}_{index}.png", buffer.getvalue()))
+    return {"paths": paths}

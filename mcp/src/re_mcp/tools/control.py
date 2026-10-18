@@ -1,14 +1,10 @@
 """MCP tools for the control channel: ping, input, screen, savestate, run and trace."""
-import io
-
-from PIL import Image
-
 from ..application.cart_trace import CartTrace
 from ..application.input import InputMacros
 from ..domain.input import InputStep
 from ..infra.control import ControlError
 from ..infra.gdb import DebugError
-from .app import bridge, control_call, error, mcp
+from .app import bridge, control_call, error, mcp, save_framebuffer_pngs
 
 _CONTROL_HINT = "Verifique se o melonDS está rodando com o canal de controle habilitado."
 
@@ -176,23 +172,7 @@ def screen_capture(screens: str = "both", format: str = "rgba8") -> dict:
             )
         return result
 
-    binary = result.get("binary", {})
-    data = binary.get("data", b"")
-    width = binary.get("width", 256)
-    height = binary.get("height", 192)
-    raw_mode = "RGBA" if format == "rgba8" else "BGRA"
-    frame = width * height * 4
-    paths: list[str] = []
-    for index in range(len(data) // frame):
-        image = Image.frombuffer(
-            "RGBA", (width, height),
-            data[index * frame:(index + 1) * frame],
-            "raw", raw_mode, 0, 1,
-        )
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        paths.append(bridge.files().write_bytes(f"capture_{index}.png", buffer.getvalue()))
-    return {"paths": paths}
+    return save_framebuffer_pngs(result, format=format, prefix="capture")
 
 
 @mcp.tool()
