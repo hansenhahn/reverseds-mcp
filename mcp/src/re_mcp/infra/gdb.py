@@ -44,6 +44,9 @@ class GdbBackend(Debugger):
     def connect(self, core: str) -> None:
         """Connect to the chosen core, starting gdb.
 
+        Idempotent: if already connected to that core it is a no-op; switching
+        cores detaches the current session cleanly before reconnecting.
+
         Parameters:
             core (str): ``arm9`` or ``arm7``.
 
@@ -53,7 +56,17 @@ class GdbBackend(Debugger):
         if core not in _CORES:
             raise DebugError(f"core inválido: {core!r} (use 'arm9' ou 'arm7')")
         if self._proc is not None:
-            self.close()
+            if self._proc.poll() is not None:
+                # gdb exited on its own; drop the stale handle and reconnect
+                self._proc = None
+                self._core = None
+            elif self._core == core:
+                return
+            else:
+                try:
+                    self.disconnect()
+                except DebugError:
+                    self.close()
         self._run_thread = None
         self._run_output = None
 
@@ -299,7 +312,11 @@ class GdbBackend(Debugger):
                 self._proc.stdin.flush()
         except (BrokenPipeError, ValueError):
             pass
-        self._proc.wait(timeout=5)
+        try:
+            self._proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self._proc.kill()
+            self._proc.wait(timeout=5)
         self._proc = None
         self._core = None
 
