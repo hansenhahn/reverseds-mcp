@@ -3,7 +3,7 @@ import pytest
 
 from re_mcp.application.input import InputMacros
 from re_mcp.domain.disasm import Disassembler
-from re_mcp.domain.input import NO_KEY, InputStep
+from re_mcp.domain.input import NO_KEY, InputStep, TouchPoint
 
 
 class FakeChannel:
@@ -57,6 +57,22 @@ def test_tap_presses_and_releases() -> None:
     assert sleeps == [0.1]
 
 
+def test_touch_tap_touches_and_releases() -> None:
+    """`touch_tap` touches the point and releases at the end."""
+    ch = FakeChannel()
+    sleeps: list[float] = []
+    InputMacros(ch, sleep=sleeps.append).touch_tap(TouchPoint(128, 96), 120)
+    assert ch.calls[0] == ("input.touch", {"x": 128, "y": 96})
+    assert ch.calls[-1] == ("input.release", None)
+    assert sleeps == [0.12]
+
+
+def test_touch_point_rejects_out_of_bounds() -> None:
+    """A `TouchPoint` outside the touch screen raises ValueError."""
+    with pytest.raises(ValueError):
+        TouchPoint(300, 96)
+
+
 def test_sequence_runs_steps() -> None:
     """`run` executes the steps and releases at the end."""
     ch = FakeChannel()
@@ -72,6 +88,16 @@ def test_sequence_wait_only_step() -> None:
     ch = FakeChannel()
     InputMacros(ch, sleep=lambda _s: None).run([InputStep(ms=50, after_ms=0, mask=None)])
     assert all(method == "input.release" for method, _ in ch.calls)
+
+
+def test_sequence_touch_and_mix() -> None:
+    """A sequence can hold a touch step and mix it with a key step."""
+    ch = FakeChannel()
+    steps = [InputStep(ms=50, mask=0xFF7), InputStep(ms=80, touch=TouchPoint(10, 20))]
+    InputMacros(ch, sleep=lambda _s: None).run(steps)
+    assert ("input.key", {"mask": 0xFF7}) in ch.calls
+    assert ("input.touch", {"x": 10, "y": 20}) in ch.calls
+    assert ch.calls[-1] == ("input.release", None)
 
 
 def test_sequence_releases_on_error() -> None:
@@ -95,3 +121,9 @@ def test_sequence_rejects_too_long() -> None:
 def test_no_key_constant() -> None:
     """The 'nothing pressed' constant is 0xFFF."""
     assert NO_KEY == 0xFFF
+
+
+def test_input_step_rejects_mask_and_touch() -> None:
+    """A step cannot set both a key mask and a touch."""
+    with pytest.raises(ValueError):
+        InputStep(ms=10, mask=0xFF7, touch=TouchPoint(1, 2))

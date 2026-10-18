@@ -11,9 +11,12 @@ transições de tela de forma confiável.
 ## What Changes
 
 - Nova tool `input_tap(mask, ms)`: pressiona a(s) tecla(s) da máscara, aguarda `ms`, solta.
+- Nova tool `input_touch_tap(x, y, ms)`: toca `(x, y)` na **tela de baixo** (touch), aguarda
+  `ms`, solta — para jogos **touch-only**.
 - Nova tool `input_sequence(steps)`: executa uma lista ordenada de passos
-  `{mask, ms, after_ms}` (aperta/espera/solta/espera).
-- Implementado no **MCP (Python)**, reutilizando as chamadas existentes ao canal de controle.
+  `{mask|touch, ms, after_ms}` — segura um botão (**ou** um toque), espera, solta, espera —
+  podendo **intercalar** botões e toques.
+- Implementado no **MCP (Python)**, reutilizando `input.key` / `input.touch` / `input.release`.
 - **Nada muda no emulador.**
 
 ## Capabilities

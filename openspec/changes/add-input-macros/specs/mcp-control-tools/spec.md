@@ -32,3 +32,23 @@ o input SHALL ser solto.
 #### Scenario: Passo só de espera
 - **WHEN** um passo não traz `mask`
 - **THEN** a sequência apenas aguarda, sem pressionar tecla
+
+### Requirement: Macro de toque
+
+O MCP SHALL oferecer `input_touch_tap(x, y, ms)`, que toca `(x, y)` na **tela de baixo**
+(engine B), aguarda `ms` e solta; e `input_sequence` SHALL aceitar passos de **toque**
+(`{touch: [x, y], ms, after_ms}`), **intercaláveis** com passos de botão. As coordenadas
+SHALL estar dentro da tela (`0<=x<256`, `0<=y<192`); o input SHALL ser solto ao final, mesmo
+em erro.
+
+#### Scenario: Tap de toque (jogo touch-only)
+- **WHEN** o agente chama `input_touch_tap` num ponto da tela de baixo
+- **THEN** o toque é aplicado e solto, e o jogo (touch-only) reage
+
+#### Scenario: Passo de toque numa sequência
+- **WHEN** um passo traz `touch` em vez de `mask`
+- **THEN** a sequência toca a tela por `ms`, solta e segue (podendo intercalar com botões)
+
+#### Scenario: Coordenada inválida
+- **WHEN** o toque está fora de `0<=x<256` / `0<=y<192`
+- **THEN** o sistema reporta erro claro
