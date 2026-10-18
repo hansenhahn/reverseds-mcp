@@ -3,7 +3,9 @@
 #
 # Pré-requisitos:
 #   - melonDS rodando com o canal de controle (Socket configurado no melonDS)
-#   - ROM_PATH apontando para a ROM (para o NitroFS)
+#
+# A ROM é um stopgap: use o override docker-compose.rom.yml enquanto o emulador
+# não for a fonte da verdade da ROM (ver ROADMAP). O deploy base é agnóstico.
 #
 # `network_mode: host` é necessário para o gdb alcançar o stub em 127.0.0.1:3333
 # (dentro do contêiner, 127.0.0.1 seria o próprio contêiner) e para o servidor
@@ -16,12 +18,11 @@ services:
     restart: unless-stopped
     volumes:
       - ${MELONDS_DIR:-/home/diego-hahn/melonds}:/run/melonds
-      - ${ROM_PATH:-/dev/null}:/rom.nds:ro
       - ${OUT_DIR:-/home/diego-hahn/re_mcp_out}:/out
     environment:
       RE_MCP_CONTROL_SOCKET: /run/melonds/control.sock
-      RE_MCP_ROM: /rom.nds
       RE_MCP_OUT_DIR: /out
       MCP_TRANSPORT: streamable-http
       MCP_HOST: 127.0.0.1
       MCP_PORT: ${MCP_PORT:-8765}
+
