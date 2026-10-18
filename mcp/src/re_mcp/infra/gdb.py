@@ -44,7 +44,8 @@ class GdbBackend(Debugger):
     def connect(self, core: str) -> None:
         """Connect to the chosen core, starting gdb.
 
-        Idempotent: if already connected to that core it is a no-op; switching
+        Idempotent: if already connected to that core it returns the session in a
+        usable (halted) state — stopping the target if it is running; switching
         cores detaches the current session cleanly before reconnecting.
 
         Parameters:
@@ -61,6 +62,8 @@ class GdbBackend(Debugger):
                 self._proc = None
                 self._core = None
             elif self._core == core:
+                if self.is_running():
+                    self.interrupt()
                 return
             else:
                 try:

@@ -98,3 +98,18 @@ def test_connect_rejects_unknown_core(
     be, _ = backend
     with pytest.raises(DebugError):
         be.connect("arm11")
+
+
+def test_connect_same_core_stops_a_running_target(
+    backend: tuple[GdbBackend, list[_FakeProc]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Re-connecting while the target runs stops it, without spawning a new gdb."""
+    be, spawned = backend
+    be.connect("arm9")
+    monkeypatch.setattr(GdbBackend, "is_running", lambda self: True)
+    interrupted: list[bool] = []
+    monkeypatch.setattr(GdbBackend, "interrupt", lambda self: interrupted.append(True))
+    be.connect("arm9")
+    assert len(spawned) == 1
+    assert interrupted == [True]
