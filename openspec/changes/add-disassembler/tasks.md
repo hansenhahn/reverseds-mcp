@@ -7,12 +7,12 @@
 
 - [x] 2.1 Adicionar `capstone` ao `pyproject` e reinstalar via `uv` (verificar a imagem)
 - [x] 2.2 Expor `disassemble(addr, count, mode)` lendo memória pela porta `Debugger`
-- [ ] 2.3 (opcional) anexar o símbolo do alvo de branches (reuso de `symbol_lookup`)
+- [ ] 2.3 (opcional, **adiado**) anexar o símbolo do alvo de branches (reuso de `symbol_lookup`) — não há tabela de símbolos hoje, só a FNT (arquivos)
 
 ## 3. Verificação
 
 - [x] 3.1 Teste unitário sem emulador (capstone puro)
-- [ ] 3.2 Integração: parar num watchpoint e desmontar o PC
+- [x] 3.2 Integração: parar num watchpoint e desmontar o PC
 
-> Implementado no MCP (`domain/disasm.py` + tool `disassemble`). 3.2 depende do
-> emulador com a imagem nova carregada.
+> Implementado no MCP (`domain/disasm.py` + tool `disassemble`). O 3.2 foi verificado no
+> emulador real (watchpoint de escrita em `DISPCNT` → desmonte do PC). O 2.3 fica adiado.

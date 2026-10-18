@@ -108,14 +108,41 @@ def input_tap(mask: int, ms: int = 100) -> dict:
 
 
 @mcp.tool()
-def input_sequence(steps: list[dict]) -> dict:
-    """Run a sequence of ``{mask, ms, after_ms}`` steps (input macro).
+def input_touch_tap(x: int, y: int, ms: int = 100) -> dict:
+    """Touch ``(x, y)`` for ``ms`` and release (input macro).
 
-    Each step presses ``mask``, waits ``ms``, releases and waits ``after_ms``. A step
-    without ``mask`` just waits. The input is released at the end (even on error).
+    The touch screen is the **bottom screen** (engine B); coordinates are ``0<=x<256``,
+    ``0<=y<192``. Use this for touch-only games (e.g. Hotel Dusk).
 
     Parameters:
-        steps (list[dict]): Ordered list of steps.
+        x (int): X coordinate.
+        y (int): Y coordinate.
+        ms (int): Touch duration in milliseconds.
+
+    Returns:
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
+    """
+    try:
+        channel = bridge.control()
+    except ControlError as exc:
+        return error(exc, _CONTROL_HINT)
+    try:
+        InputMacros(channel).touch_tap(x, y, ms)
+        return {"ok": True}
+    except (ControlError, ValueError) as exc:
+        return error(exc, _CONTROL_HINT)
+
+
+@mcp.tool()
+def input_sequence(steps: list[dict]) -> dict:
+    """Run a sequence of ``{mask|touch, ms, after_ms}`` steps (input macro).
+
+    Each step holds its input — a button ``mask`` or a ``touch`` at ``(x, y)`` (bottom
+    screen, ``0<=x<256``, ``0<=y<192``) — for ``ms``, releases, then waits ``after_ms``.
+    A step with neither just waits. The input is released at the end (even on error).
+
+    Parameters:
+        steps (list[dict]): Ordered list of steps; each ``{mask|touch, ms, after_ms}``.
 
     Returns:
         dict: ``{"ok": true, "steps": N}`` or ``{"error": ...}``.
@@ -130,6 +157,11 @@ def input_sequence(steps: list[dict]) -> dict:
                 ms=int(step.get("ms", 100)),
                 after_ms=int(step.get("after_ms", 0)),
                 mask=(int(step["mask"]) if step.get("mask") is not None else None),
+                touch=(
+                    (int(step["touch"][0]), int(step["touch"][1]))
+                    if step.get("touch") is not None
+                    else None
+                ),
             )
             for step in steps
         ]
