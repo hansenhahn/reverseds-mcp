@@ -253,32 +253,14 @@ def savestate_load(slot: int = 0) -> dict:
 
 
 @mcp.tool()
-def emu_pause() -> dict:
-    """Pause execution.
-
-    Returns:
-        dict: ``{"ok": true}`` or ``{"error": ...}``.
-    """
-    return control_call("emu.pause")
-
-
-@mcp.tool()
-def emu_resume() -> dict:
-    """Resume execution.
-
-    Returns:
-        dict: ``{"ok": true}`` or ``{"error": ...}``.
-    """
-    return control_call("emu.resume")
-
-
-@mcp.tool()
 def emu_step_frame(n: int = 1) -> dict:
     """Advance exactly ``n`` frames and stop (deterministic frame step).
 
     Blocks until the ``n`` frames have been emulated, then leaves the emulator
-    paused with the framebuffer composed (so a capture right after reflects the
-    frozen frame). Resume with ``emu_resume``. Requires the emulator running.
+    stopped with the framebuffer composed (so a capture right after reflects the
+    frozen frame). With the debugger attached the stop is the stub's own halt;
+    resume with ``debug_resume`` (or advance again with a new ``emu_step_frame``).
+    Requires the emulator running.
 
     Parameters:
         n (int): Number of frames to advance (>= 1).

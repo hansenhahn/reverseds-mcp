@@ -92,8 +92,8 @@ def render_layer(
     Uses the **emulator's own renderer** as an oracle (not a reimplementation), drawing
     only the requested layer (engine ``A``/``B`` x ``bg0``-``bg3``/``obj``/``3d``). It
     does not execute CPU code and does not disturb the displayed frame; the emulator
-    keeps running (or stays paused) as before. Combine with ``emu_pause`` or
-    ``emu_step_frame`` to render a specific frozen frame.
+    keeps running (or stays stopped) as before. Combine with ``emu_step_frame``
+    to render a specific frozen frame.
 
     Parameters:
         engine (str): ``A`` or ``B``.
