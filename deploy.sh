@@ -22,7 +22,7 @@
 #
 # Variáveis (opcionais, com defaults):
 #   MELONDS_REPO     checkout do emulador        (default: ../melonDS)
-#   MELONDS_BRANCH   branch do emulador          (default: dev/gdb-watchpoints)
+#   MELONDS_BRANCH   branch do emulador          (default: master)
 #   BUILD_TYPE       tipo de build do emulador   (default: Release)
 #   SKIP_EMULATOR_BUILD  =1 pula o build do emulador
 #   MELONDS_DIR      dir do canal de controle    (default: ~/melonds)
@@ -39,7 +39,7 @@ COMPOSE="$SCRIPT_DIR/mcp/docker-compose.yml"
 
 : "${MCP_PORT:=8765}"
 : "${MELONDS_REPO:=$SCRIPT_DIR/../melonDS}"
-: "${MELONDS_BRANCH:=dev/gdb-watchpoints}"
+: "${MELONDS_BRANCH:=master}"
 : "${BUILD_TYPE:=Release}"
 export MCP_PORT
 
