@@ -4,10 +4,13 @@
 # agente conectar manualmente (o cliente NÃO sobe o contêiner).
 #
 # Uso:
-#   ./deploy.sh up      # build + sobe em background (padrão)
+#   ./deploy.sh up      # (fetch + switch main + pull) build + sobe em background
 #   ./deploy.sh down    # derruba
 #   ./deploy.sh logs    # segue os logs
 #   ./deploy.sh ps      # status
+#
+# O `up` sempre parte da main: faz `git fetch origin main`, `git switch main` e
+# `git pull --ff-only` antes do build (aborta se houver mudanças locais).
 #
 # O deploy é AGNÓSTICO à ROM. Enquanto o emulador não for a fonte da verdade da
 # ROM, inclua o override com MCP_COMPOSE_EXTRA (lista separada por ':'):
@@ -41,6 +44,10 @@ fi
 
 case "${1:-up}" in
   up)
+    echo ">> git: garantindo a main"
+    git -C "$SCRIPT_DIR" fetch origin main
+    git -C "$SCRIPT_DIR" switch main
+    git -C "$SCRIPT_DIR" pull --ff-only origin main
     docker compose "${COMPOSE_ARGS[@]}" up --build -d
     echo ">> re-mcp em http://127.0.0.1:${MCP_PORT}/mcp"
     ;;
