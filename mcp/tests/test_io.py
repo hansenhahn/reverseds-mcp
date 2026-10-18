@@ -1,5 +1,5 @@
 """Pure IO decode tests (schema + VRAM layout) — without the emulator."""
-from re_mcp.domain.io import DecodedRegister, IoMap, VramLayout
+from re_mcp.domain.io import DecodedRegister, DmaTransfer, IoMap, VramLayout
 
 _MAP = IoMap.default()
 
@@ -82,3 +82,27 @@ def test_vram_layout_smoke() -> None:
     assert bindings["F"].target == "engine_a_obj"
     assert bindings["F"].address == 0x6400000
     assert bindings["G"].target == "engine_a_bg_extpal"
+
+
+def test_dma_transfer_decodes_cnt() -> None:
+    """A raw DMA description decodes the DMAxCNT with the schema field names."""
+    # word_count=0x100, dest=inc, src=inc, 32-bit, start immediately, enable
+    cnt = 0x100 | (1 << 26) | (1 << 31)
+    transfer = DmaTransfer.from_raw(0, 0x02000000, 0x06000000, cnt, 0x0201ABCD)
+    assert transfer.length == 0x100 * 4
+    assert transfer.source.control == "inc"
+    assert transfer.destination.control == "inc"
+    assert transfer.destination.address == 0x06000000
+    assert transfer.pc == 0x0201ABCD
+    fields = {f.name: f for f in transfer.control.fields}
+    assert fields["transfer_32bit"].value == 1
+    assert fields["start_timing"].meaning == "immediately"
+    assert fields["enable"].value == 1
+
+
+def test_dma_transfer_16bit_length() -> None:
+    """A 16-bit transfer with dest=dec decodes length and the endpoint control."""
+    cnt = 0x10 | (1 << 21) | (1 << 31)  # word_count=0x10, dest=dec, 16-bit, enable
+    transfer = DmaTransfer.from_raw(1, 0x02000000, 0x06000000, cnt, 0)
+    assert transfer.length == 0x10 * 2
+    assert transfer.destination.control == "dec"

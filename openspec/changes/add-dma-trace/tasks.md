@@ -1,15 +1,19 @@
-## 1. Emulador — hook de DMA (núcleo, seguindo o cart-trace)
+## 1. Domínio — item decodificado (reuso do `add-io-decode`)
 
-- [ ] 1.1 Hook no início de cada DMA: capturar `src`/`dst`/`length`/`cnt` (O(1), sem alocação) e o `pc` programador. Verificar: um DMA gera um item; sem assinante não há custo.
-- [ ] 1.2 Batching por N/timeout e notificação fora da EmuThread (reuso do padrão do cart-trace). Verificar: lotes chegam completos ao cliente.
-- [ ] 1.3 Métodos no canal de controle: `dma.trace.start`/`dma.trace.stop` (+ entrega por evento). Verificar: `control-client.py` inicia, roda e recebe itens.
+- [x] 1.1 Value object `DmaTransfer` (+ `DmaEndpoint`) decodificando o `DMAxCNT` pelo schema GBATEK `domain/io` (mesmos nomes do `io_read`); de→para com endereço+controle e `length` em bytes; teste unitário puro. (O `src`/`dst` vêm do próprio trace, então não foi preciso adicionar `DMAxSAD`/`DMAxDAD` ao schema.)
 
-## 2. MCP — tools
+## 2. Emulador — hook de DMA (núcleo, seguindo o cart-trace)
 
-- [ ] 2.1 Tools `dma_trace_start`/`dma_trace_read`/`dma_trace_stop` (análogas às de cartucho). Verificar: agente lista as tools.
-- [ ] 2.2 Smoke: rodar a intro e mostrar DMAs para a VRAM (dst em 0x06000000+) com o `pc`. Verificar: há itens de DMA para VRAM durante o START→intro.
+- [x] 2.1 Hook no início de cada DMA: `OnDmaTransfer` chamado em `DMA::Start()` com `cpu`/`ch`/`src`/`dst`/`cnt`/`pc` (O(1), sem alocação); sem assinante (nullptr) não há custo.
+- [x] 2.2 Batching por N/timeout e notificação por `eventfd` fora da EmuThread + **ring de capacidade fixa** (`max_items`, descarta o mais antigo e conta `dropped`). Verificado: com cap pequeno, `dropped>0` e lotes ≤ cap.
+- [x] 2.3 Métodos no canal de controle: `dma.trace.start`/`dma.trace.stop` + notificação `event.dma`. Verificado com cliente direto.
 
-## 3. Validação
+## 3. MCP — tools
 
-- [ ] 3.1 Build do melonDS sem regressão; testes/smoke do MCP verdes. Verificar: build + `pytest`.
-- [ ] 3.2 `openspec validate add-dma-trace --strict` OK. Verificar: comando sem erro.
+- [x] 3.1 Tools `dma_trace_start`/`dma_trace_read`/`dma_trace_stop` (análogas às de cartucho), decodificando cada item em `DmaTransfer`.
+- [x] 3.2 Smoke: rodar a intro e mostrar DMAs para a VRAM — verificado (dst em `0x06400000`/`0x07000000`, com `pc` e controle decodificado).
+
+## 4. Validação
+
+- [x] 4.1 Build do melonDS sem regressão; `pyright`/`lint-imports`/`pytest` verdes.
+- [x] 4.2 `openspec validate add-dma-trace --strict` OK. Verificar: comando sem erro.

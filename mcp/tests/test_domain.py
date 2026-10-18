@@ -1,6 +1,7 @@
 """Pure domain tests (`disasm`, input macros) — without the emulator."""
 import pytest
 
+from re_mcp.application.dma_trace import DmaTrace
 from re_mcp.application.input import InputMacros
 from re_mcp.domain.disasm import Disassembler
 from re_mcp.domain.input import NO_KEY, InputStep, TouchPoint
@@ -121,6 +122,47 @@ def test_sequence_rejects_too_long() -> None:
 def test_no_key_constant() -> None:
     """The 'nothing pressed' constant is 0xFFF."""
     assert NO_KEY == 0xFFF
+
+
+class _FakeDmaChannel:
+    """Fake control channel that replays queued messages for the DMA trace."""
+
+    def __init__(self, messages: list[dict | None]) -> None:
+        self._messages = list(messages)
+        self.calls: list[tuple[str, dict | None]] = []
+
+    def call(self, method: str, params: dict | None = None) -> dict:
+        self.calls.append((method, params))
+        return {}
+
+    def read_message(self, timeout: float) -> dict | None:
+        return self._messages.pop(0) if self._messages else None
+
+    def close(self) -> None:
+        pass
+
+
+def test_dma_trace_collect_decodes() -> None:
+    """`collect` decodes each `event.dma` item into a DmaTransfer."""
+    message = {
+        "method": "event.dma",
+        "params": {
+            "transfers": [
+                {"cpu": 0, "ch": 0, "src": 0x02000000, "dst": 0x06000000,
+                 "cnt": 0x100 | (1 << 26) | (1 << 31), "pc": 0x0201ABCD},
+            ],
+            "count": 1,
+            "overflow": False,
+        },
+    }
+    ch = _FakeDmaChannel([message])
+    ticks = iter([0.0, 0.0, 5.0])
+    transfers = DmaTrace(ch, clock=lambda: next(ticks, 5.0)).collect(2.0)
+    assert len(transfers) == 1
+    transfer = transfers[0]
+    assert transfer.destination.address == 0x06000000
+    assert transfer.length == 0x100 * 4
+    assert transfer.pc == 0x0201ABCD
 
 
 def test_input_step_rejects_mask_and_touch() -> None:
