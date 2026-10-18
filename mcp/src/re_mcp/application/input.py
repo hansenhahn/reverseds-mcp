@@ -2,7 +2,7 @@
 import time
 from collections.abc import Callable
 
-from ..domain.input import MAX_TOTAL_MS, NO_KEY, InputStep, touch_point
+from ..domain.input import MAX_TOTAL_MS, NO_KEY, InputStep, TouchPoint
 from .ports import ControlChannel
 
 
@@ -25,14 +25,9 @@ class InputMacros:
         """Press ``mask``, wait ``ms`` and release (always releases, even on error)."""
         self._press_release("input.key", {"mask": mask}, ms)
 
-    def touch_tap(self, x: int, y: int, ms: int) -> None:
-        """Touch ``(x, y)``, wait ``ms`` and release (always releases, even on error).
-
-        Raises:
-            ValueError: If the point is outside the touch screen.
-        """
-        px, py = touch_point(x, y)
-        self._press_release("input.touch", {"x": px, "y": py}, ms)
+    def touch_tap(self, point: TouchPoint, ms: int) -> None:
+        """Touch ``point`` on the touch screen, wait ``ms`` and release (releases on error)."""
+        self._press_release("input.touch", {"x": point.x, "y": point.y}, ms)
 
     def run(self, steps: list[InputStep], max_total_ms: int = MAX_TOTAL_MS) -> None:
         """Run the steps in order; release the input at the end (even on error).
@@ -46,8 +41,9 @@ class InputMacros:
         try:
             for step in steps:
                 if step.touch is not None:
-                    x, y = step.touch
-                    self._press_release("input.touch", {"x": x, "y": y}, step.ms)
+                    self._press_release(
+                        "input.touch", {"x": step.touch.x, "y": step.touch.y}, step.ms
+                    )
                 elif step.mask is not None and step.mask != NO_KEY:
                     self._press_release("input.key", {"mask": step.mask}, step.ms)
                 if step.after_ms:

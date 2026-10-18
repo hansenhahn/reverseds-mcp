@@ -28,8 +28,10 @@ futura (P2) caso precisemos de precisão de frame.
 O input também precisa cobrir a **tela de toque** (tela de baixo / engine B), porque há jogos
 **touch-only** (ex.: Hotel Dusk) que não usam botões. Usa-se `input.touch {x, y}` +
 `input.release`, com as **mesmas semânticas** (tap e passo de sequência) e o mesmo teto de
-tempo. No passo, `touch` (x,y) e `mask` são **mutuamente exclusivos**; as coordenadas são
-validadas no domínio (`0<=x<256`, `0<=y<192`). Assim dá para **intercalar** toque e botões.
+tempo. O ponto de toque é um **value object de domínio** (`TouchPoint`), que **valida as
+coordenadas no próprio tipo** (`0<=x<256`, `0<=y<192`) — comportamento no objeto, não função
+solta. No passo, `touch` e `mask` são **mutuamente exclusivos**. Assim dá para **intercalar**
+toque e botões.
 
 ### Erros
 

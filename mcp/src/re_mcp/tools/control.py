@@ -1,7 +1,7 @@
 """MCP tools for the control channel: ping, input, screen, savestate, run and trace."""
 from ..application.cart_trace import CartTrace
 from ..application.input import InputMacros
-from ..domain.input import InputStep
+from ..domain.input import InputStep, TouchPoint
 from ..infra.control import ControlError
 from ..infra.gdb import DebugError
 from .app import bridge, control_call, error, mcp, save_framebuffer_pngs
@@ -127,7 +127,7 @@ def input_touch_tap(x: int, y: int, ms: int = 100) -> dict:
     except ControlError as exc:
         return error(exc, _CONTROL_HINT)
     try:
-        InputMacros(channel).touch_tap(x, y, ms)
+        InputMacros(channel).touch_tap(TouchPoint(x, y), ms)
         return {"ok": True}
     except (ControlError, ValueError) as exc:
         return error(exc, _CONTROL_HINT)
@@ -158,7 +158,7 @@ def input_sequence(steps: list[dict]) -> dict:
                 after_ms=int(step.get("after_ms", 0)),
                 mask=(int(step["mask"]) if step.get("mask") is not None else None),
                 touch=(
-                    (int(step["touch"][0]), int(step["touch"][1]))
+                    TouchPoint(int(step["touch"][0]), int(step["touch"][1]))
                     if step.get("touch") is not None
                     else None
                 ),
