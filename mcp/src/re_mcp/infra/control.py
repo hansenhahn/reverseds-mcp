@@ -19,8 +19,13 @@ class UnixControlChannel(ControlChannel):
     Supports the binary frame ``[u32 BE N][bytes]`` that follows responses/notifications
     announcing a binary payload (e.g. screen capture).
 
-    The connection is (re)opened on demand: if the socket dies (e.g. melonDS was
-    restarted and the Unix socket was recreated), the next call reconnects on its own.
+    Robustness:
+
+    - a ``call`` matches the response by ``id``; notifications (``event.*``) that arrive in
+      the meantime are queued for ``read_message`` instead of desyncing the stream;
+    - a dead socket, a truncated/empty body or undecodable JSON all trigger a reconnect;
+    - a **timeout** is surfaced as an error (never silently retried, which would re-execute
+      a non-idempotent operation such as a frame step).
     """
 
     def __init__(self, socket_path: str, timeout: float = 5.0) -> None:
@@ -28,7 +33,7 @@ class UnixControlChannel(ControlChannel):
 
         Parameters:
             socket_path (str): Path to the melonDS Unix socket.
-            timeout (float): Read timeout in seconds.
+            timeout (float): Default read timeout in seconds.
 
         Raises:
             ControlError: If it cannot connect.
@@ -37,6 +42,7 @@ class UnixControlChannel(ControlChannel):
         self._timeout = timeout
         self._sock: socket.socket | None = None
         self._id = 0
+        self._pending: list[dict] = []
         self._connect()
 
     def _connect(self) -> None:
@@ -62,20 +68,26 @@ class UnixControlChannel(ControlChannel):
         except ControlError:
             self._sock = None
 
-    def call(self, method: str, params: dict | None = None) -> dict:
-        """Call a control-channel method and return the ``result``.
+    def reset(self) -> None:
+        """Force a fresh connection (drops any queued notifications)."""
+        self._pending.clear()
+        self._reconnect()
+        if self._sock is None:
+            raise ControlError(f"não reconectou em {self._path}")
 
-        Reconnects automatically once if the socket is dead.
+    def call(self, method: str, params: dict | None = None, timeout: float | None = None) -> dict:
+        """Call a control-channel method and return the ``result``.
 
         Parameters:
             method (str): Method name.
             params (dict | None): Parameters.
+            timeout (float | None): Read timeout for this call (defaults to the channel's).
 
         Returns:
             dict: The response ``result`` field (with ``binary.data`` when present).
 
         Raises:
-            ControlError: On a JSON-RPC error response or a connection error.
+            ControlError: On a JSON-RPC error response, a timeout or a connection error.
         """
         self._id += 1
         request: dict = {"jsonrpc": "2.0", "id": self._id, "method": method}
@@ -85,12 +97,15 @@ class UnixControlChannel(ControlChannel):
 
         message: dict | None = None
         last: Exception | None = None
-        for attempt in range(2):
+        for _ in range(2):
             try:
                 self._send(body)
-                message = self._recv_message()
+                message = self._await_response(self._id, timeout)
                 break
-            except (OSError, _TransportError) as exc:
+            except TimeoutError as exc:
+                # the request was sent; do NOT retry (the operation may be running)
+                raise ControlError(f"{method}: timeout") from exc
+            except (OSError, _TransportError, ValueError) as exc:
                 last = exc
                 self._reconnect()
         if message is None:
@@ -102,7 +117,7 @@ class UnixControlChannel(ControlChannel):
         return message.get("result", {})
 
     def read_message(self, timeout: float) -> dict | None:
-        """Read the next message (response or notification), or None on timeout.
+        """Read the next message (queued notification or fresh), or None on timeout.
 
         Parameters:
             timeout (float): Read timeout in seconds.
@@ -110,19 +125,16 @@ class UnixControlChannel(ControlChannel):
         Returns:
             dict | None: The message, or None if nothing arrived in time.
         """
+        if self._pending:
+            return self._pending.pop(0)
         if self._sock is None:
             return None
-        previous = self._sock.gettimeout()
-        self._sock.settimeout(timeout)
         try:
-            return self._recv_message()
-        except (TimeoutError, socket.timeout):
+            return self._recv_message(timeout)
+        except TimeoutError:
             return None
-        except (OSError, _TransportError) as exc:
+        except (OSError, _TransportError, ValueError) as exc:
             raise ControlError(f"conexão encerrada: {exc}") from exc
-        finally:
-            if self._sock is not None:
-                self._sock.settimeout(previous)
 
     def close(self) -> None:
         """Close the connection."""
@@ -130,19 +142,40 @@ class UnixControlChannel(ControlChannel):
             self._sock.close()
             self._sock = None
 
+    def _await_response(self, expected_id: int, timeout: float | None) -> dict:
+        """Read messages until the response with ``expected_id`` arrives.
+
+        Notifications (no matching ``id``) are queued for ``read_message``.
+        """
+        while True:
+            message = self._recv_message(timeout)
+            if message.get("id") == expected_id:
+                return message
+            self._pending.append(message)
+
     def _send(self, body: bytes) -> None:
         if self._sock is None:
             raise _TransportError("canal não conectado")
         self._sock.sendall(b"Content-Length: %d\r\n\r\n" % len(body) + body)
 
-    def _recv_message(self) -> dict:
-        message = self._recv()
-        for container in (message.get("result"), message.get("params")):
-            if isinstance(container, dict) and "binary" in container:
-                size = int.from_bytes(self._recv_exact(4), "big")
-                container["binary"]["data"] = self._recv_exact(size)
-                break
-        return message
+    def _recv_message(self, timeout: float | None) -> dict:
+        previous: float | None = None
+        if self._sock is None:
+            raise _TransportError("canal não conectado")
+        if timeout is not None:
+            previous = self._sock.gettimeout()
+            self._sock.settimeout(timeout)
+        try:
+            message = self._recv()
+            for container in (message.get("result"), message.get("params")):
+                if isinstance(container, dict) and "binary" in container:
+                    size = int.from_bytes(self._recv_exact(4), "big")
+                    container["binary"]["data"] = self._recv_exact(size)
+                    break
+            return message
+        finally:
+            if previous is not None and self._sock is not None:
+                self._sock.settimeout(previous)
 
     def _recv(self) -> dict:
         if self._sock is None:
@@ -160,6 +193,8 @@ class UnixControlChannel(ControlChannel):
                 length = int(line.split(":", 1)[1].strip())
 
         body = self._recv_exact(length)
+        if not body:
+            raise _TransportError("mensagem vazia (canal dessincronizado)")
         return json.loads(body)
 
     def _recv_exact(self, size: int) -> bytes:

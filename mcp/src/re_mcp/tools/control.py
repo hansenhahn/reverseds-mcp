@@ -51,6 +51,23 @@ def health_check() -> dict:
 
 
 @mcp.tool()
+def control_reset() -> dict:
+    """Force a fresh control-channel connection (recovers a desynced channel).
+
+    Closes the cached connection; the next call reconnects. Use this when the channel seems
+    stuck, instead of restarting the MCP.
+
+    Returns:
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
+    """
+    try:
+        bridge.control().close()
+        return {"ok": True}
+    except ControlError as exc:
+        return error(exc, _CONTROL_HINT)
+
+
+@mcp.tool()
 def input_key(mask: int) -> dict:
     """Set the pressed keys (active-low mask: 1=released, 0=pressed).
 
@@ -197,7 +214,7 @@ def screen_capture(screens: str = "both", format: str = "rgba8") -> dict:
     Returns:
         dict: ``{"paths": [...]}`` with the saved PNGs, or ``{"error": ...}``.
     """
-    result = control_call("screen.capture", {"screens": screens, "format": format})
+    result = control_call("screen.capture", {"screens": screens, "format": format}, timeout=8.0)
     if "error" in result:
         if "timed out" in str(result["error"]).lower():
             result["hint"] = (
@@ -269,7 +286,8 @@ def emu_step_frame(n: int = 1) -> dict:
     Returns:
         dict: ``{"ok": true, "frames": n}`` or ``{"error": ...}``.
     """
-    return control_call("emu.step_frame", {"n": n})
+    # long operation: scale the read timeout with the number of frames
+    return control_call("emu.step_frame", {"n": n}, timeout=max(10.0, 5.0 + n / 10))
 
 
 @mcp.tool()

@@ -112,14 +112,26 @@ class GdbBackend(Debugger):
 
         Returns:
             bytes: The bytes read.
+
+        Raises:
+            DebugError: If the target is running or the dump is incomplete.
         """
+        if self.is_running():
+            raise DebugError(
+                "alvo em execução: pare-o (debug_interrupt/debug_wait) antes de ler memória"
+            )
         path = self._temp_path()
         try:
             self._cmd(f"dump binary memory {path} 0x{addr:x} 0x{addr + size:x}")
             with open(path, "rb") as handle:
-                return handle.read()
+                data = handle.read()
         finally:
             os.unlink(path)
+        if len(data) != size:
+            raise DebugError(
+                f"leitura incompleta em 0x{addr:x}: esperado {size} byte(s), veio {len(data)}"
+            )
+        return data
 
     def write_memory(self, addr: int, data: bytes) -> None:
         """Write ``data`` to emulated memory starting at ``addr``.
