@@ -1,0 +1,14 @@
+# Override opcional: monta a ROM para o NitroFS (cart_*).
+#
+# É um stopgap — quando o emulador for a fonte da verdade da ROM (ver ROADMAP),
+# este arquivo deixa de ser necessário e o deploy volta a ser só o base.
+#
+# Uso (junto do base):
+#   ROM_PATH="/caminho/jogo.nds" \
+#     docker compose -f mcp/docker-compose.yml -f mcp/docker-compose.rom.yml up --build -d
+services:
+  re-mcp:
+    volumes:
+      - ${ROM_PATH:?defina ROM_PATH}:/rom.nds:ro
+    environment:
+      RE_MCP_ROM: /rom.nds

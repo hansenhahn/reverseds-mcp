@@ -1,21 +1,28 @@
-# Orquestra o MCP junto do melonDS rodando no host.
+# Sobe o MCP re-mcp como servidor de rede (streamable-http), para o agente
+# conectar sem o cliente precisar dar spawn (deploy manual).
 #
 # Pré-requisitos:
-#   - melonDS rodando com o canal de controle em /tmp/melonds-control.sock
-#   - ROM_PATH apontando para a ROM (para o NitroFS)
+#   - melonDS rodando com o canal de controle (Socket configurado no melonDS)
+#
+# A ROM é um stopgap: use o override docker-compose.rom.yml enquanto o emulador
+# não for a fonte da verdade da ROM (ver ROADMAP). O deploy base é agnóstico.
 #
 # `network_mode: host` é necessário para o gdb alcançar o stub em 127.0.0.1:3333
-# (dentro do contêiner, 127.0.0.1 seria o próprio contêiner).
+# (dentro do contêiner, 127.0.0.1 seria o próprio contêiner) e para o servidor
+# HTTP ficar acessível no loopback do host.
 services:
   re-mcp:
     build: .
+    image: re-mcp
     network_mode: host
+    restart: unless-stopped
     volumes:
-      - /tmp/melonds-control.sock:/run/melonds/control.sock
-      - ${ROM_PATH:-/dev/null}:/rom.nds:ro
+      - ${MELONDS_DIR:-/home/diego-hahn/melonds}:/run/melonds
+      - ${OUT_DIR:-/home/diego-hahn/re_mcp_out}:/out
     environment:
       RE_MCP_CONTROL_SOCKET: /run/melonds/control.sock
-      RE_MCP_ROM: /rom.nds
-      RE_MCP_NDSTOOL: /usr/local/bin/ndstool
-    stdin_open: true
-    tty: true
+      RE_MCP_OUT_DIR: /out
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: 127.0.0.1
+      MCP_PORT: ${MCP_PORT:-8765}
+
