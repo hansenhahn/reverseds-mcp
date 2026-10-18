@@ -15,7 +15,9 @@ class FakeChannel:
         self._n = 0
         self._fail_on = fail_on
 
-    def call(self, method: str, params: dict | None = None) -> dict:
+    def call(
+        self, method: str, params: dict | None = None, timeout: float | None = None
+    ) -> dict:
         self._n += 1
         self.calls.append((method, params))
         if self._fail_on is not None and self._n == self._fail_on:
@@ -131,7 +133,9 @@ class _FakeDmaChannel:
         self._messages = list(messages)
         self.calls: list[tuple[str, dict | None]] = []
 
-    def call(self, method: str, params: dict | None = None) -> dict:
+    def call(
+        self, method: str, params: dict | None = None, timeout: float | None = None
+    ) -> dict:
         self.calls.append((method, params))
         return {}
 

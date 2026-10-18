@@ -3,7 +3,7 @@ import json
 
 from ..domain.disasm import Disassembler
 from ..infra.gdb import DebugError
-from .app import bridge, debug_error, error, mcp
+from .app import bridge, control_call, debug_error, error, mcp
 
 
 @mcp.tool()
@@ -26,15 +26,22 @@ def debug_connect(core: str = "arm9") -> dict:
         return debug_error(exc)
     try:
         pc = backend.read_register("pc")
-    except DebugError as exc:
+    except DebugError:
+        # The stub is only serviced while the CPU runs; if the emulator is paused
+        # (emu_pause) it will not answer. Nudge it (a short resume -- the gdb attach
+        # halts it again) and retry the read once.
         try:
-            backend.disconnect()
-        except DebugError:
-            pass
-        return error(
-            exc,
-            "O stub GDB pode estar travado; reinicie o melonDS (nds-control.sh / nds-debug.sh).",
-        )
+            control_call("emu.resume")
+            pc = backend.read_register("pc")
+        except DebugError as exc:
+            try:
+                backend.disconnect()
+            except DebugError:
+                pass
+            return error(
+                exc,
+                "O stub GDB pode estar travado; reinicie o melonDS (nds-control.sh / nds-debug.sh).",
+            )
     return {"ok": True, "core": core, "pc": f"0x{pc:08x}"}
 
 

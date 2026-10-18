@@ -6,12 +6,15 @@ from typing import Protocol, runtime_checkable
 class ControlChannel(Protocol):
     """Port for the melonDS control channel (JSON-RPC over a Unix socket)."""
 
-    def call(self, method: str, params: dict | None = None) -> dict:
+    def call(
+        self, method: str, params: dict | None = None, timeout: float | None = None
+    ) -> dict:
         """Call a control-channel method and return the ``result``.
 
         Parameters:
             method (str): Method name (e.g. ``ping``, ``input.key``).
             params (dict | None): Method parameters.
+            timeout (float | None): Read timeout for this call (defaults to the channel's).
 
         Returns:
             dict: The JSON-RPC response ``result``.

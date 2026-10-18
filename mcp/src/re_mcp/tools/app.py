@@ -69,18 +69,21 @@ def debug_error(exc: Exception) -> dict:
     return error(exc)
 
 
-def control_call(method: str, params: dict | None = None) -> dict:
+def control_call(
+    method: str, params: dict | None = None, timeout: float | None = None
+) -> dict:
     """Call the control channel, turning errors into a dictionary.
 
     Parameters:
         method (str): Control-channel method.
         params (dict | None): Parameters.
+        timeout (float | None): Read timeout for this call (defaults to the channel's).
 
     Returns:
         dict: The result, or ``{"error", "hint"?}``.
     """
     try:
-        return bridge.control().call(method, params)
+        return bridge.control().call(method, params, timeout=timeout)
     except ControlError as exc:
         return error(
             exc, "Verifique se o melonDS está rodando com o canal de controle habilitado."
