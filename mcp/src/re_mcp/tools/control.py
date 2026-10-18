@@ -1,7 +1,9 @@
 """MCP tools for the control channel: ping, input, screen, savestate, run and trace."""
 from ..application.cart_trace import CartTrace
+from ..application.dma_trace import DmaTrace
 from ..application.input import InputMacros
 from ..domain.input import InputStep, TouchPoint
+from ..domain.io import DmaTransfer
 from ..infra.control import ControlError
 from ..infra.gdb import DebugError
 from .app import bridge, control_call, error, mcp, save_framebuffer_pngs
@@ -271,17 +273,21 @@ def emu_step_frame(n: int = 1) -> dict:
 
 
 @mcp.tool()
-def cart_trace_start(batch: int = 256, timeout_ms: int = 100) -> dict:
+def cart_trace_start(batch: int = 256, timeout_ms: int = 100, max_items: int = 65536) -> dict:
     """Start the cartridge read trace (overwrites any previous one).
 
     Parameters:
         batch (int): Items per batch.
         timeout_ms (int): Batch timeout in milliseconds.
+        max_items (int): Ring capacity; the oldest reads are dropped past it.
 
     Returns:
         dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
-    return control_call("cart.trace.start", {"batch": batch, "timeout_ms": timeout_ms})
+    return control_call(
+        "cart.trace.start",
+        {"batch": batch, "timeout_ms": timeout_ms, "max_items": max_items},
+    )
 
 
 @mcp.tool()
@@ -310,3 +316,80 @@ def cart_trace_stop() -> dict:
         dict: ``{"ok": true}`` or ``{"error": ...}``.
     """
     return control_call("cart.trace.stop")
+
+
+def _dma_dict(transfer: DmaTransfer) -> dict:
+    """Serialize a decoded DMA transfer for a tool response.
+
+    Parameters:
+        transfer (DmaTransfer): The decoded transfer.
+
+    Returns:
+        dict: The serialized transfer (de -> para, length in bytes, decoded control).
+    """
+    return {
+        "channel": transfer.channel,
+        "source": {
+            "address": f"0x{transfer.source.address:08x}",
+            "control": transfer.source.control,
+        },
+        "destination": {
+            "address": f"0x{transfer.destination.address:08x}",
+            "control": transfer.destination.control,
+        },
+        "length": transfer.length,
+        "control": {
+            field.name: field.meaning if field.meaning is not None else field.value
+            for field in transfer.control.fields
+        },
+        "pc": f"0x{transfer.pc:08x}",
+    }
+
+
+@mcp.tool()
+def dma_trace_start(batch: int = 256, timeout_ms: int = 100, max_items: int = 65536) -> dict:
+    """Start the DMA transfer trace (overwrites any previous one).
+
+    Each transfer is delivered decoded (de -> para, length in bytes, and the ``DMAxCNT``
+    fields). Collect with ``dma_trace_read``.
+
+    Parameters:
+        batch (int): Transfers per batch.
+        timeout_ms (int): Batch timeout in milliseconds.
+        max_items (int): Ring capacity; the oldest transfers are dropped past it.
+
+    Returns:
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
+    """
+    return control_call(
+        "dma.trace.start",
+        {"batch": batch, "timeout_ms": timeout_ms, "max_items": max_items},
+    )
+
+
+@mcp.tool()
+def dma_trace_read(seconds: float = 2.0) -> dict:
+    """Collect the DMA transfers for a period (``event.dma`` batches), decoded.
+
+    Parameters:
+        seconds (float): Collection duration in seconds.
+
+    Returns:
+        dict: ``{"count": N, "transfers": [...]}`` or ``{"error": ...}``.
+    """
+    try:
+        channel = bridge.control()
+    except ControlError as exc:
+        return error(exc, _CONTROL_HINT)
+    transfers = DmaTrace(channel).collect(seconds)
+    return {"count": len(transfers), "transfers": [_dma_dict(t) for t in transfers]}
+
+
+@mcp.tool()
+def dma_trace_stop() -> dict:
+    """Stop the DMA transfer trace.
+
+    Returns:
+        dict: ``{"ok": true}`` or ``{"error": ...}``.
+    """
+    return control_call("dma.trace.stop")

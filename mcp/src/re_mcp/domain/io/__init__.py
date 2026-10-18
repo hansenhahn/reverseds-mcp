@@ -1,5 +1,6 @@
-"""NDS IO map: schema, decode engine and VRAM layout (pure, no I/O)."""
+"""NDS IO map: schema, decode engine, VRAM layout and decoded DMA transfers (pure)."""
 from .decode import DecodedField, DecodedRegister, RegField, Register, UnknownRegister
+from .dma import DmaEndpoint, DmaTransfer
 from .map import IoMap
 from .vram import VramBinding, VramCnt, VramLayout
 
@@ -13,4 +14,6 @@ __all__ = [
     "VramBinding",
     "VramCnt",
     "VramLayout",
+    "DmaEndpoint",
+    "DmaTransfer",
 ]

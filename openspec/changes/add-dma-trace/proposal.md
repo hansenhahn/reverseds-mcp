@@ -7,8 +7,13 @@ VRAM" e "qual código o colocou lá".
 
 ## What Changes
 
-- **Trace de DMA**: no início de cada transferência, registrar `src`, `dst`, `length`,
-  `cnt` e o `pc` que programou o canal.
+- **Trace de DMA**: no início de cada transferência, registrar um item **decodificado**: o
+  canal, o **de → para** (`src`/`dst` + controles de origem/destino), o `length` em **bytes**
+  e o **controle decodificado** do `DMAxCNT` — pelos **mesmos nomes do schema GBATEK**
+  (`transfer_32bit`, `src_control`/`dest_control`, `start_timing`, `repeat`, `irq`,
+  `enable`) — mais o `pc` que programou o canal.
+- O item **reusa a decodificação de IO do `add-io-decode`** (`domain/io`, schema
+  `registers/dma.py`, o mesmo do `io_read`) — **não** expõe `cnt` como bits crus.
 - Entrega em **lotes** (por N itens ou timeout), como o cart trace; **subscrição**
   (start/read/stop).
 - Opcional: breakpoint em IO (`0x040000B0+`) e watchpoint de IO (reuso dos primitivos já
