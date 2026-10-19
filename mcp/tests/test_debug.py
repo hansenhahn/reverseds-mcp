@@ -1,6 +1,6 @@
 """Debug service tests (domain, with a fake Debugger)."""
 from re_mcp.application.watchpoints import Watchpoints
-from re_mcp.domain.debug import MemoryDiff
+from re_mcp.domain.debug import Breakpoint, MemoryDiff, StackFrame
 
 
 class FakeDebugger:
@@ -16,6 +16,10 @@ class FakeDebugger:
     def write_memory(self, addr: int, data: bytes) -> None: ...
     def set_breakpoint(self, addr: int) -> int:
         return 0
+    def backtrace(self) -> list[StackFrame]:
+        return []
+    def breakpoints(self) -> list[Breakpoint]:
+        return []
     def step(self) -> None: ...
     def interrupt(self) -> None: ...
     def resume(self) -> None: ...

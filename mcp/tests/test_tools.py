@@ -33,3 +33,10 @@ def test_lists_p1_tools() -> None:
     names = asyncio.run(_list_tools())
     for tool in ("input_tap", "input_sequence", "disassemble", "health_check"):
         assert tool in names
+
+
+def test_lists_observability_tools() -> None:
+    """The observability tools are exposed (backtrace, breakpoints)."""
+    names = asyncio.run(_list_tools())
+    for tool in ("debug_backtrace", "list_breakpoints"):
+        assert tool in names

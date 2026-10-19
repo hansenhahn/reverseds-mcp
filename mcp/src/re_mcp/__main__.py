@@ -8,11 +8,13 @@ Transport is selected with ``MCP_TRANSPORT``:
 """
 import os
 
+from .logging_setup import setup_logging
 from .tools.server import mcp
 
 
 def main() -> None:
     """Start the MCP server on the configured transport."""
+    setup_logging()
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     if transport == "sse":
         mcp.run(

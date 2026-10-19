@@ -88,8 +88,10 @@ def test_dma_transfer_decodes_cnt() -> None:
     """A raw DMA description decodes the DMAxCNT with the schema field names."""
     # word_count=0x100, dest=inc, src=inc, 32-bit, start immediately, enable
     cnt = 0x100 | (1 << 26) | (1 << 31)
-    transfer = DmaTransfer.from_raw(0, 0x02000000, 0x06000000, cnt, 0x0201ABCD)
+    transfer = DmaTransfer.from_raw(0, 0, 0x02000000, 0x06000000, cnt, 0x0201ABCD)
     assert transfer.length == 0x100 * 4
+    assert transfer.cpu == 0
+    assert transfer.channel == 0
     assert transfer.source.control == "inc"
     assert transfer.destination.control == "inc"
     assert transfer.destination.address == 0x06000000
@@ -103,6 +105,8 @@ def test_dma_transfer_decodes_cnt() -> None:
 def test_dma_transfer_16bit_length() -> None:
     """A 16-bit transfer with dest=dec decodes length and the endpoint control."""
     cnt = 0x10 | (1 << 21) | (1 << 31)  # word_count=0x10, dest=dec, 16-bit, enable
-    transfer = DmaTransfer.from_raw(1, 0x02000000, 0x06000000, cnt, 0)
+    transfer = DmaTransfer.from_raw(1, 1, 0x02000000, 0x06000000, cnt, 0)
     assert transfer.length == 0x10 * 2
+    assert transfer.cpu == 1
+    assert transfer.channel == 1
     assert transfer.destination.control == "dec"

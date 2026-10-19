@@ -59,7 +59,7 @@ class DmaTrace:
                 for raw in message["params"]["transfers"]:
                     transfers.append(
                         DmaTransfer.from_raw(
-                            raw["ch"], raw["src"], raw["dst"], raw["cnt"], raw["pc"]
+                            raw["cpu"], raw["ch"], raw["src"], raw["dst"], raw["cnt"], raw["pc"]
                         )
                     )
         return transfers

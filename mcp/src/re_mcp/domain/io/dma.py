@@ -29,6 +29,7 @@ class DmaTransfer:
     """
 
     channel: int
+    cpu: int
     source: DmaEndpoint
     destination: DmaEndpoint
     length: int
@@ -37,16 +38,17 @@ class DmaTransfer:
 
     @classmethod
     def from_raw(
-        cls, channel: int, src: int, dst: int, cnt: int, pc: int
+        cls, cpu: int, channel: int, src: int, dst: int, cnt: int, pc: int
     ) -> "DmaTransfer":
-        """Decode a raw DMA description ``{channel, src, dst, cnt, pc}``.
+        """Decode a raw DMA description ``{cpu, channel, src, dst, cnt, pc}``.
 
         Parameters:
+            cpu (int): Core that programmed the channel (0=ARM9, 1=ARM7).
             channel (int): DMA channel (0..3).
             src (int): Source address (``DMAxSAD``).
             dst (int): Destination address (``DMAxDAD``).
             cnt (int): Raw ``DMAxCNT`` value.
-            pc (int): PC that programmed the channel.
+            pc (int): Address of the instruction that programmed the channel.
 
         Returns:
             DmaTransfer: The decoded transfer.
@@ -56,6 +58,7 @@ class DmaTransfer:
         size = 4 if fields["transfer_32bit"].value else 2
         return cls(
             channel=channel,
+            cpu=cpu,
             source=DmaEndpoint(src, fields["src_control"].meaning or "inc"),
             destination=DmaEndpoint(dst, fields["dest_control"].meaning or "inc"),
             length=fields["word_count"].value * size,

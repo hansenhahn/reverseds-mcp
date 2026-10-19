@@ -328,3 +328,50 @@ def debug_disconnect() -> dict:
         return {"ok": True}
     except DebugError as exc:
         return debug_error(exc)
+
+
+@mcp.tool()
+def debug_backtrace() -> dict:
+    """Return the call stack of the connected core (innermost frame first).
+
+    Requires the target to be stopped.
+
+    Returns:
+        dict: ``{"frames": [{"index", "pc", "function"}]}`` or ``{"error", "hint"?}``.
+    """
+    try:
+        frames = bridge.debugger().backtrace()
+    except DebugError as exc:
+        return debug_error(exc)
+    return {
+        "frames": [
+            {"index": frame.index, "pc": f"0x{frame.pc:08x}", "function": frame.function}
+            for frame in frames
+        ]
+    }
+
+
+@mcp.tool()
+def list_breakpoints() -> dict:
+    """List the active breakpoints and watchpoints.
+
+    Returns:
+        dict: ``{"breakpoints": [{"number","kind","address","condition","enabled"}]}``
+        or ``{"error", "hint"?}``.
+    """
+    try:
+        breakpoints = bridge.debugger().breakpoints()
+    except DebugError as exc:
+        return debug_error(exc)
+    return {
+        "breakpoints": [
+            {
+                "number": bp.number,
+                "kind": bp.kind,
+                "address": f"0x{bp.address:08x}" if bp.address is not None else None,
+                "condition": bp.condition,
+                "enabled": bp.enabled,
+            }
+            for bp in breakpoints
+        ]
+    }
