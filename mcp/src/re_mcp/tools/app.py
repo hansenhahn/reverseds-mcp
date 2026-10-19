@@ -1,5 +1,8 @@
 """Base for the MCP tools: server, bridge and shared error helpers."""
 import io
+import logging
+import time
+from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 from PIL import Image
@@ -10,7 +13,29 @@ from ..domain.io import DecodedRegister
 from ..infra.control import ControlError
 
 bridge = Bridge(Config.from_env())
-mcp = MCPServer("re-mcp")
+log = logging.getLogger("re_mcp")
+
+
+class _ToolLogMiddleware:
+    """Log every ``tools/call`` with the tool name, duration and ok/error."""
+
+    async def __call__(self, ctx: Any, call_next: Any) -> Any:
+        if getattr(ctx, "method", None) != "tools/call":
+            return await call_next(ctx)
+        params = getattr(ctx, "params", None) or {}
+        name = params.get("name") if isinstance(params, dict) else None
+        started = time.monotonic()
+        try:
+            result = await call_next(ctx)
+        except Exception as exc:  # noqa: BLE001 - log then re-raise
+            log.error("tool=%s error=%s dur=%.0fms", name, exc, (time.monotonic() - started) * 1000)
+            raise
+        status = "error" if getattr(result, "isError", False) else "ok"
+        log.info("tool=%s %s dur=%.0fms", name, status, (time.monotonic() - started) * 1000)
+        return result
+
+
+mcp = MCPServer("re-mcp", middleware=[_ToolLogMiddleware()])
 
 
 def reg_dict(register: DecodedRegister) -> dict:

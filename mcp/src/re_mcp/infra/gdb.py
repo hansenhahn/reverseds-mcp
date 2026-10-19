@@ -4,6 +4,7 @@ Uses `gdb-multiarch` on the command line, with the hardware watchpoint limit app
 (so watchpoints are real hardware). Communication is over stdin/stdout (binary) with
 `select`, to respect timeouts.
 """
+import logging
 import os
 import re
 import select
@@ -12,10 +13,13 @@ import subprocess
 import tempfile
 import threading
 import time
+from dataclasses import replace
 
 from ..application.ports import Debugger
+from ..domain.debug import Breakpoint, StackFrame
 
 _CORES = {"arm9", "arm7"}
+log = logging.getLogger("re_mcp.gdb")
 
 
 class DebugError(RuntimeError):
@@ -40,6 +44,7 @@ class GdbBackend(Debugger):
         self._run_thread: threading.Thread | None = None
         self._run_output: str | None = None
         self._run_timeout: float = 3600.0
+        self._lock = threading.RLock()
 
     def connect(self, core: str) -> None:
         """Connect to the chosen core, starting gdb.
@@ -56,11 +61,14 @@ class GdbBackend(Debugger):
         """
         if core not in _CORES:
             raise DebugError(f"core inválido: {core!r} (use 'arm9' ou 'arm7')")
+        # Handle an existing session WITHOUT the lock: interrupt/disconnect may run
+        # while a background `continue` holds the lock, so taking it here would block.
         if self._proc is not None:
             if self._proc.poll() is not None:
-                # gdb exited on its own; drop the stale handle and reconnect
-                self._proc = None
-                self._core = None
+                with self._lock:
+                    log.warning("gdb morto detectado no connect; descartando o handle")
+                    self._proc = None
+                    self._core = None
             elif self._core == core:
                 if self.is_running():
                     self.interrupt()
@@ -70,6 +78,10 @@ class GdbBackend(Debugger):
                     self.disconnect()
                 except DebugError:
                     self.close()
+        with self._lock:
+            self._start(core)
+
+    def _start(self, core: str) -> None:
         self._run_thread = None
         self._run_output = None
 
@@ -91,6 +103,7 @@ class GdbBackend(Debugger):
         # must be set AFTER connect (gdb resets this on connect)
         self._cmd("set remote hardware-watchpoint-limit 4")
         self._core = core
+        log.info("gdb conectado (core=%s, pid=%s)", core, getattr(self._proc, "pid", "?"))
 
     def read_register(self, name: str) -> int:
         """Read a register by name (e.g. ``pc``).
@@ -215,6 +228,49 @@ class GdbBackend(Debugger):
         """
         self._cmd(f"delete {number}")
 
+    _BT_RE = re.compile(r"^#(\d+)\s+0x([0-9a-fA-F]+)\s+in\s+(\S+)", re.MULTILINE)
+    _BP_RE = re.compile(
+        r"^(\d+)\s+(breakpoint|watchpoint|hw watchpoint|hw breakpoint)"
+        r"\s+(\S+)\s+([yn])\b\s*(.*)$"
+    )
+
+    def backtrace(self) -> list[StackFrame]:
+        """Return the call stack of the connected core (innermost frame first)."""
+        out = self._cmd("bt")
+        frames: list[StackFrame] = []
+        for match in self._BT_RE.finditer(out):
+            function = match.group(3)
+            frames.append(
+                StackFrame(
+                    index=int(match.group(1)),
+                    pc=int(match.group(2), 16),
+                    function=None if function == "??" else function,
+                )
+            )
+        return frames
+
+    def breakpoints(self) -> list[Breakpoint]:
+        """Return the breakpoints/watchpoints known to the stub."""
+        out = self._cmd("info breakpoints")
+        result: list[Breakpoint] = []
+        for line in out.splitlines():
+            match = self._BP_RE.match(line.strip())
+            if match is not None:
+                rest = match.group(5)
+                found = re.search(r"0x[0-9a-fA-F]+", rest)
+                result.append(
+                    Breakpoint(
+                        number=int(match.group(1)),
+                        kind="watchpoint" if "watchpoint" in match.group(2) else "breakpoint",
+                        address=int(found.group(0), 16) if found else None,
+                        condition=None,
+                        enabled=match.group(4) == "y",
+                    )
+                )
+            elif result and "stop only if" in line:
+                result[-1] = replace(result[-1], condition=line.split("stop only if", 1)[1].strip())
+        return result
+
     def continue_(self, timeout: float = 30.0) -> bool:
         """Resume execution and wait for the stop.
 
@@ -285,7 +341,11 @@ class GdbBackend(Debugger):
         if self._run_thread is not None and self.is_running():
             # let the `continue` thread consume the stop
             self._run_thread.join(10)
-            self._run_thread = None
+            # only clear the handle if the thread actually finished; otherwise keep
+            # it so `is_running()` stays True and other commands raise (instead of
+            # blocking on the lock held by the still-running continue)
+            if not self._run_thread.is_alive():
+                self._run_thread = None
         else:
             self._read_until_prompt(timeout=10)
 
@@ -295,8 +355,12 @@ class GdbBackend(Debugger):
             return
         if self.is_running():
             self.interrupt()
-        self._cmd("detach", timeout=10)
+        try:
+            self._cmd("detach", timeout=10)
+        except DebugError:
+            pass
         self.close()
+        log.info("gdb desconectado")
 
     def close(self) -> None:
         """Shut down gdb."""
@@ -328,33 +392,65 @@ class GdbBackend(Debugger):
             raise DebugError("gdb não iniciado (chame connect antes)")
         if self.is_running() and threading.current_thread() is not self._run_thread:
             raise DebugError("alvo em execução: use debug_wait/debug_interrupt antes de outros comandos")
-        self._proc.stdin.write((text + "\n").encode())
-        self._proc.stdin.flush()
-        return self._read_until_prompt(timeout)
+        with self._lock:
+            self._ensure_alive()
+            try:
+                assert self._proc.stdin is not None
+                self._proc.stdin.write((text + "\n").encode())
+                self._proc.stdin.flush()
+            except (BrokenPipeError, OSError, ValueError) as exc:
+                self._mark_dead()
+                raise DebugError("gdb caiu; reconecte (debug_disconnect/debug_connect)") from exc
+            out = self._read_until_prompt(timeout)
+        if not out and self._proc is not None and self._proc.poll() is not None:
+            self._mark_dead()
+            raise DebugError("gdb caiu; reconecte (debug_disconnect/debug_connect)")
+        return out
+
+    def _ensure_alive(self) -> None:
+        """Raise if the gdb process is gone."""
+        if self._proc is None:
+            raise DebugError("gdb não iniciado (chame connect antes)")
+        if self._proc.poll() is not None:
+            self._mark_dead()
+            raise DebugError("gdb caiu; reconecte (debug_disconnect/debug_connect)")
+
+    def _mark_dead(self) -> None:
+        """Drop the dead gdb handle so the next call reconnects."""
+        log.warning("gdb caiu; marcando desconectado")
+        if self._proc is not None:
+            try:
+                self._proc.kill()
+            except OSError:
+                pass
+        self._proc = None
+        self._core = None
+        self._run_thread = None
 
     def _read_until_prompt(self, timeout: float) -> str:
         if self._proc is None or self._proc.stdout is None:
             raise DebugError("gdb não iniciado")
-        fd = self._proc.stdout.fileno()
-        buffer = ""
-        deadline = time.monotonic() + timeout
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            ready, _, _ = select.select([fd], [], [], remaining)
-            if not ready:
-                break
-            try:
-                chunk = os.read(fd, 4096)
-            except OSError:
-                break
-            if not chunk:
-                break
-            buffer += chunk.decode(errors="replace")
-            if buffer.rstrip().endswith("(gdb)"):
-                break
-        return buffer
+        with self._lock:
+            fd = self._proc.stdout.fileno()
+            buffer = ""
+            deadline = time.monotonic() + timeout
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                ready, _, _ = select.select([fd], [], [], remaining)
+                if not ready:
+                    break
+                try:
+                    chunk = os.read(fd, 4096)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                buffer += chunk.decode(errors="replace")
+                if buffer.rstrip().endswith("(gdb)"):
+                    break
+            return buffer
 
     @staticmethod
     def _temp_path() -> str:

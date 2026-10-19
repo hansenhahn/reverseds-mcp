@@ -113,3 +113,58 @@ def test_connect_same_core_stops_a_running_target(
     be.connect("arm9")
     assert len(spawned) == 1
     assert interrupted == [True]
+
+
+def test_backtrace_parses_frames(
+    backend: tuple[GdbBackend, list[_FakeProc]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`backtrace` parses gdb's `bt` output, mapping `??` to no function."""
+    be, _ = backend
+    monkeypatch.setattr(
+        be, "_cmd", lambda text, timeout=10: "#0  0x020c3348 in ?? ()\n#1  0x02004800 in main ()\n"
+    )
+    frames = be.backtrace()
+    assert [(f.index, f.pc, f.function) for f in frames] == [
+        (0, 0x020C3348, None),
+        (1, 0x02004800, "main"),
+    ]
+
+
+def test_breakpoints_parses_and_reads_condition(
+    backend: tuple[GdbBackend, list[_FakeProc]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`breakpoints` parses the table and attaches a `stop only if` condition."""
+    be, _ = backend
+    out = (
+        "Num     Type           Disp Enb Address    What\n"
+        "1       breakpoint     keep y   0x02000000 \n"
+        "2       hw watchpoint  keep y              *(unsigned int*)0x06000000\n"
+        "        stop only if r0 == 1\n"
+    )
+    monkeypatch.setattr(be, "_cmd", lambda text, timeout=10: out)
+    bps = be.breakpoints()
+    assert (bps[0].number, bps[0].kind, bps[0].address, bps[0].enabled) == (
+        1, "breakpoint", 0x02000000, True,
+    )
+    assert (bps[1].kind, bps[1].address, bps[1].condition) == (
+        "watchpoint", 0x06000000, "r0 == 1",
+    )
+
+
+def test_cmd_on_dead_pipe_raises_and_marks_disconnected(
+    backend: tuple[GdbBackend, list[_FakeProc]],
+) -> None:
+    """A broken pipe becomes a DebugError and drops the dead gdb handle."""
+    be, spawned = backend
+    be.connect("arm9")
+
+    class _BadStdin:
+        def write(self, data: bytes) -> int:
+            raise BrokenPipeError()
+
+        def flush(self) -> None: ...
+
+    spawned[0].stdin = _BadStdin()  # type: ignore[assignment]
+    with pytest.raises(DebugError):
+        be._cmd("info registers")
+    assert be._proc is None

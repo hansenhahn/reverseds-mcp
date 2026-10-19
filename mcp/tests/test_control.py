@@ -1,6 +1,7 @@
 """Control-channel client robustness tests (framing, id-matching, reconnect)."""
 import json
 import socket
+import threading
 
 import pytest
 
@@ -15,6 +16,7 @@ def _channel(sock: socket.socket) -> UnixControlChannel:
     channel._sock = sock
     channel._id = 0
     channel._pending = []
+    channel._lock = threading.RLock()  # noqa: SLF001 - test seam (skips __init__)
     return channel
 
 

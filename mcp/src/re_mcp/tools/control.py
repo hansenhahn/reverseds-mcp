@@ -223,7 +223,14 @@ def screen_capture(screens: str = "both", format: str = "rgba8") -> dict:
             )
         return result
 
-    return save_framebuffer_pngs(result, format=format, prefix="capture")
+    saved = save_framebuffer_pngs(result, format=format, prefix="capture")
+    if not saved.get("paths"):
+        return error(
+            RuntimeError("captura veio vazia (0 frames decodificados)"),
+            "O canal respondeu sem framebuffer: confira a CPU parada (debug_resume) e o "
+            "renderer software no melonDS.",
+        )
+    return saved
 
 
 @mcp.tool()
@@ -329,6 +336,7 @@ def _dma_dict(transfer: DmaTransfer) -> dict:
     """
     return {
         "channel": transfer.channel,
+        "cpu": "arm9" if transfer.cpu == 0 else "arm7",
         "source": {
             "address": f"0x{transfer.source.address:08x}",
             "control": transfer.source.control,

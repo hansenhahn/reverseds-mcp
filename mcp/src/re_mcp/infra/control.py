@@ -1,8 +1,13 @@
 """Adapter for the melonDS control channel (JSON-RPC over a Unix socket)."""
 import json
+import logging
 import socket
+import threading
+import time
 
 from ..application.ports import ControlChannel
+
+log = logging.getLogger("re_mcp.control")
 
 
 class ControlError(RuntimeError):
@@ -43,7 +48,9 @@ class UnixControlChannel(ControlChannel):
         self._sock: socket.socket | None = None
         self._id = 0
         self._pending: list[dict] = []
+        self._lock = threading.RLock()
         self._connect()
+        log.info("canal de controle conectado em %s", socket_path)
 
     def _connect(self) -> None:
         """Open (or reopen) the connection to the control-channel socket.
@@ -89,32 +96,40 @@ class UnixControlChannel(ControlChannel):
         Raises:
             ControlError: On a JSON-RPC error response, a timeout or a connection error.
         """
-        self._id += 1
-        request: dict = {"jsonrpc": "2.0", "id": self._id, "method": method}
-        if params is not None:
-            request["params"] = params
-        body = json.dumps(request).encode()
+        started = time.monotonic()
+        try:
+            with self._lock:
+                self._id += 1
+                request: dict = {"jsonrpc": "2.0", "id": self._id, "method": method}
+                if params is not None:
+                    request["params"] = params
+                body = json.dumps(request).encode()
 
-        message: dict | None = None
-        last: Exception | None = None
-        for _ in range(2):
-            try:
-                self._send(body)
-                message = self._await_response(self._id, timeout)
-                break
-            except TimeoutError as exc:
-                # the request was sent; do NOT retry (the operation may be running)
-                raise ControlError(f"{method}: timeout") from exc
-            except (OSError, _TransportError, ValueError) as exc:
-                last = exc
-                self._reconnect()
-        if message is None:
-            raise ControlError(f"{method}: falha de conexão ({last})")
-
-        if "error" in message:
-            error = message["error"]
-            raise ControlError(f"{method}: {error.get('message', error)}")
-        return message.get("result", {})
+                message: dict | None = None
+                last: Exception | None = None
+                for _ in range(2):
+                    try:
+                        self._send(body)
+                        message = self._await_response(self._id, timeout)
+                        break
+                    except TimeoutError as exc:
+                        # the request was sent; do NOT retry (the operation may be running)
+                        raise ControlError(f"{method}: timeout") from exc
+                    except (OSError, _TransportError, ValueError) as exc:
+                        last = exc
+                        log.warning("canal: falha de transporte (%s); reconectando", exc)
+                        self._reconnect()
+                if message is None:
+                    raise ControlError(f"{method}: falha de conexão ({last})")
+                if "error" in message:
+                    error = message["error"]
+                    raise ControlError(f"{method}: {error.get('message', error)}")
+                result = message.get("result", {})
+        except ControlError as exc:
+            log.error("canal: %s error=%s dur=%.0fms", method, exc, (time.monotonic() - started) * 1000)
+            raise
+        log.info("canal: %s ok dur=%.0fms", method, (time.monotonic() - started) * 1000)
+        return result
 
     def read_message(self, timeout: float) -> dict | None:
         """Read the next message (queued notification or fresh), or None on timeout.
@@ -129,12 +144,13 @@ class UnixControlChannel(ControlChannel):
             return self._pending.pop(0)
         if self._sock is None:
             return None
-        try:
-            return self._recv_message(timeout)
-        except TimeoutError:
-            return None
-        except (OSError, _TransportError, ValueError) as exc:
-            raise ControlError(f"conexão encerrada: {exc}") from exc
+        with self._lock:
+            try:
+                return self._recv_message(timeout)
+            except TimeoutError:
+                return None
+            except (OSError, _TransportError, ValueError) as exc:
+                raise ControlError(f"conexão encerrada: {exc}") from exc
 
     def close(self) -> None:
         """Close the connection."""

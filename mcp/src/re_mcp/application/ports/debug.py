@@ -1,6 +1,8 @@
 """Port for the debug backend (gdb connected to the melonDS stub)."""
 from typing import Protocol, runtime_checkable
 
+from ...domain.debug import Breakpoint, StackFrame
+
 
 @runtime_checkable
 class Debugger(Protocol):
@@ -85,6 +87,22 @@ class Debugger(Protocol):
 
         Parameters:
             number (int): The breakpoint/watchpoint number.
+        """
+        ...
+
+    def backtrace(self) -> list[StackFrame]:
+        """Return the call stack of the connected core (innermost frame first).
+
+        Returns:
+            list[StackFrame]: The frames.
+        """
+        ...
+
+    def breakpoints(self) -> list[Breakpoint]:
+        """Return the active breakpoints/watchpoints known to the stub.
+
+        Returns:
+            list[Breakpoint]: The breakpoints/watchpoints.
         """
         ...
 

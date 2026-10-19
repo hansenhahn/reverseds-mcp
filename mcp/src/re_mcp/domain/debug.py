@@ -11,6 +11,26 @@ class WatchpointHit:
 
 
 @dataclass(frozen=True, slots=True)
+class StackFrame:
+    """One frame of a backtrace."""
+
+    index: int
+    pc: int
+    function: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class Breakpoint:
+    """A breakpoint or watchpoint known to the stub."""
+
+    number: int
+    kind: str
+    address: int | None
+    condition: str | None
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
 class Snapshot:
     """A stored block of memory, with its base address."""
 
