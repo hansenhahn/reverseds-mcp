@@ -85,12 +85,27 @@ def debug_error(exc: Exception) -> dict:
         dict: The error dictionary, with a hint when we recognize the cause.
     """
     msg = str(exc)
+    lower = msg.lower()
     if "alvo em execução" in msg:
         return error(exc, "Use debug_wait() ou debug_interrupt() antes de outros comandos.")
     if "gdb não iniciado" in msg:
         return error(exc, "Chame debug_connect() primeiro.")
     if "falha de conexão" in msg or "não conectou" in msg:
         return error(exc, "O emulador pode ter reiniciado; reconecte (ou reinicie o melonDS).")
+    if "não existe" in msg and ("breakpoint" in lower or "watchpoint" in lower):
+        return error(exc, "Confira o número em list_breakpoints()/debug_slots().")
+    if (
+        "hardware resources" in lower
+        or "cannot allocate" in lower
+        or "cannot insert hardware watchpoint" in lower
+        or "could not insert hardware watchpoint" in lower
+        or "no more hardware watchpoints" in lower
+    ):
+        return error(
+            exc,
+            "Watchpoint não alocado (slots esgotados ou tipo não suportado); use "
+            "debug_slots()/list_breakpoints() e remova os não usados.",
+        )
     return error(exc)
 
 

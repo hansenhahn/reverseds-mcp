@@ -1,9 +1,25 @@
 """MCP tools for debugging (gdb): memory, registers, breakpoints and execution."""
 import json
 
+from ..application.watchpoints import Watchpoints
+from ..domain.debug import Breakpoint
 from ..domain.disasm import Disassembler
 from ..infra.gdb import DebugError
 from .app import bridge, control_call, debug_error, error, mcp
+
+
+def _breakpoint_dict(breakpoint: Breakpoint) -> dict:
+    """Serialize a breakpoint/watchpoint for a tool response."""
+    return {
+        "number": breakpoint.number,
+        "kind": breakpoint.kind,
+        "address": (
+            f"0x{breakpoint.address:08x}" if breakpoint.address is not None else None
+        ),
+        "condition": breakpoint.condition,
+        "enabled": breakpoint.enabled,
+        "hardware": breakpoint.hardware,
+    }
 
 
 @mcp.tool()
@@ -107,13 +123,14 @@ def mem_write(addr: int, hex_data: str) -> dict:
         hex_data (str): Bytes in hex (e.g. ``deadbeef``).
 
     Returns:
-        dict: ``{"ok": true}`` or ``{"error": ...}``.
+        dict: ``{"ok": true, "addr": "0x...", "size": N}`` or ``{"error": ...}``.
     """
     try:
-        bridge.debugger().write_memory(addr, bytes.fromhex(hex_data))
-        return {"ok": True}
+        data = bytes.fromhex(hex_data)
+        bridge.debugger().write_memory(addr, data)
     except (DebugError, ValueError) as exc:
         return {"error": str(exc)}
+    return {"ok": True, "addr": f"0x{addr:08x}", "size": len(data)}
 
 
 @mcp.tool()
@@ -191,12 +208,13 @@ def set_breakpoint(addr: int) -> dict:
         addr (int): Address.
 
     Returns:
-        dict: ``{"number": N}`` or ``{"error": ...}``.
+        dict: ``{"number": N, "addr": "0x..."}`` or ``{"error": ...}``.
     """
     try:
-        return {"number": bridge.debugger().set_breakpoint(addr)}
+        number = bridge.debugger().set_breakpoint(addr)
     except DebugError as exc:
         return debug_error(exc)
+    return {"number": number, "addr": f"0x{addr:08x}"}
 
 
 @mcp.tool()
@@ -363,15 +381,28 @@ def list_breakpoints() -> dict:
         breakpoints = bridge.debugger().breakpoints()
     except DebugError as exc:
         return debug_error(exc)
+    return {"breakpoints": [_breakpoint_dict(bp) for bp in breakpoints]}
+
+
+@mcp.tool()
+def debug_slots() -> dict:
+    """Report hardware watchpoint usage of the connected core.
+
+    Returns:
+        dict: ``{"core", "watchpoint_limit", "watchpoints_used", "free",
+        "software_watchpoints", "by_kind", "watchpoints"}`` or
+        ``{"error", "hint"?}``.
+    """
+    try:
+        slots = Watchpoints(bridge.debugger()).slots()
+    except DebugError as exc:
+        return debug_error(exc)
     return {
-        "breakpoints": [
-            {
-                "number": bp.number,
-                "kind": bp.kind,
-                "address": f"0x{bp.address:08x}" if bp.address is not None else None,
-                "condition": bp.condition,
-                "enabled": bp.enabled,
-            }
-            for bp in breakpoints
-        ]
+        "core": slots.core,
+        "watchpoint_limit": slots.limit,
+        "watchpoints_used": slots.used,
+        "free": slots.free,
+        "software_watchpoints": len(slots.software),
+        "by_kind": slots.by_kind,
+        "watchpoints": [_breakpoint_dict(bp) for bp in slots.watchpoints],
     }

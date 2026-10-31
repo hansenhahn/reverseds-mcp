@@ -19,6 +19,7 @@ from ..application.ports import Debugger
 from ..domain.debug import Breakpoint, StackFrame
 
 _CORES = {"arm9", "arm7"}
+WATCHPOINT_LIMIT = 4
 log = logging.getLogger("re_mcp.gdb")
 
 
@@ -101,9 +102,17 @@ class GdbBackend(Debugger):
         if "Remote debugging" not in out and "error" in out.lower():
             raise DebugError(f"falha ao conectar no stub: {out.strip()}")
         # must be set AFTER connect (gdb resets this on connect)
-        self._cmd("set remote hardware-watchpoint-limit 4")
+        self._cmd(f"set remote hardware-watchpoint-limit {WATCHPOINT_LIMIT}")
         self._core = core
         log.info("gdb conectado (core=%s, pid=%s)", core, getattr(self._proc, "pid", "?"))
+
+    def core(self) -> str | None:
+        """Return the connected core (``arm9``/``arm7``), if any."""
+        return self._core
+
+    def watchpoint_limit(self) -> int:
+        """Return the configured hardware watchpoint limit."""
+        return WATCHPOINT_LIMIT
 
     def read_register(self, name: str) -> int:
         """Read a register by name (e.g. ``pc``).
@@ -215,7 +224,11 @@ class GdbBackend(Debugger):
         if condition:
             expr += f" if {condition}"
         out = self._cmd(expr)
-        match = re.search(r"(?:Hardware watchpoint|Watchpoint) (\d+)", out)
+        match = re.search(
+            r"(?:Hardware\s+(?:(?:read|access)(?:\s*\(read/write\))?\s+)?watchpoint"
+            r"|Watchpoint)\s+(\d+)",
+            out,
+        )
         if match is None:
             raise DebugError(f"não criou watchpoint: {out.strip()}")
         return int(match.group(1))
@@ -225,14 +238,38 @@ class GdbBackend(Debugger):
 
         Parameters:
             number (int): The number.
+
+        Raises:
+            DebugError: If gdb reports that the breakpoint does not exist.
         """
-        self._cmd(f"delete {number}")
+        out = self._cmd(f"delete {number}")
+        if re.search(r"No breakpoint|not found", out, re.IGNORECASE):
+            raise DebugError(f"breakpoint/watchpoint {number} não existe")
 
     _BT_RE = re.compile(r"^#(\d+)\s+0x([0-9a-fA-F]+)\s+in\s+(\S+)", re.MULTILINE)
-    _BP_RE = re.compile(
-        r"^(\d+)\s+(breakpoint|watchpoint|hw watchpoint|hw breakpoint)"
-        r"\s+(\S+)\s+([yn])\b\s*(.*)$"
-    )
+    _BP_RE = re.compile(r"^(\d+)\s+(.+?)\s+(keep|del|dis)\s+([yn])\s*(.*)$")
+
+    @staticmethod
+    def _breakpoint_kind(type_text: str) -> str:
+        """Normalize the gdb ``Type`` column into a stable kind."""
+        normalized = " ".join(type_text.lower().split())
+        if "breakpoint" in normalized or "watchpoint" not in normalized:
+            return "breakpoint"
+        if "read" in normalized:
+            return "read-watchpoint"
+        if "acc" in normalized:
+            return "access-watchpoint"
+        return "watchpoint"
+
+    @staticmethod
+    def _is_hardware(type_text: str) -> bool:
+        """Whether the gdb ``Type`` column denotes a hardware resource.
+
+        gdb omits the ``hw`` prefix for read/access watchpoints even when they use
+        hardware; a plain ``watchpoint`` is the software fallback.
+        """
+        normalized = " ".join(type_text.lower().split())
+        return "hw" in normalized.split() or "read" in normalized or "acc" in normalized
 
     def backtrace(self) -> list[StackFrame]:
         """Return the call stack of the connected core (innermost frame first)."""
@@ -261,10 +298,11 @@ class GdbBackend(Debugger):
                 result.append(
                     Breakpoint(
                         number=int(match.group(1)),
-                        kind="watchpoint" if "watchpoint" in match.group(2) else "breakpoint",
+                        kind=self._breakpoint_kind(match.group(2)),
                         address=int(found.group(0), 16) if found else None,
                         condition=None,
                         enabled=match.group(4) == "y",
+                        hardware=self._is_hardware(match.group(2)),
                     )
                 )
             elif result and "stop only if" in line:

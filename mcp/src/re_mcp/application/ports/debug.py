@@ -16,6 +16,18 @@ class Debugger(Protocol):
         """
         ...
 
+    def core(self) -> str | None:
+        """Return the connected core (``arm9``/``arm7``), if any."""
+        ...
+
+    def watchpoint_limit(self) -> int:
+        """Return the configured hardware watchpoint limit.
+
+        Returns:
+            int: The number of hardware watchpoint slots.
+        """
+        ...
+
     def read_register(self, name: str) -> int:
         """Read a register by name (e.g. ``pc``).
 

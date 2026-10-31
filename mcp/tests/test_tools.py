@@ -40,3 +40,10 @@ def test_lists_observability_tools() -> None:
     names = asyncio.run(_list_tools())
     for tool in ("debug_backtrace", "list_breakpoints"):
         assert tool in names
+
+
+def test_lists_confidence_tools() -> None:
+    """Wave 0 tools are exposed (slots and address validation)."""
+    names = asyncio.run(_list_tools())
+    for tool in ("debug_slots", "addr_valid"):
+        assert tool in names

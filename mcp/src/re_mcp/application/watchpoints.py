@@ -1,5 +1,5 @@
 """Application service: find what writes/reads an address (watchpoint + execution)."""
-from ..domain.debug import WatchpointHit
+from ..domain.debug import HardwareSlots, WatchpointHit
 from .ports import Debugger
 
 _CONTEXT_REGS = ("r0", "r1", "r2", "r3", "sp", "lr")
@@ -15,6 +15,14 @@ class Watchpoints:
             debugger (Debugger): A connected debug backend.
         """
         self._debugger = debugger
+
+    def slots(self) -> HardwareSlots:
+        """Report hardware watchpoint usage of the connected core."""
+        return HardwareSlots(
+            core=self._debugger.core(),
+            limit=self._debugger.watchpoint_limit(),
+            breakpoints=tuple(self._debugger.breakpoints()),
+        )
 
     def find_write(
         self, addr: int, timeout: float = 30.0, condition: str | None = None
