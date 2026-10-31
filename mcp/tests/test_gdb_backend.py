@@ -168,3 +168,88 @@ def test_cmd_on_dead_pipe_raises_and_marks_disconnected(
     with pytest.raises(DebugError):
         be._cmd("info registers")
     assert be._proc is None
+
+
+@pytest.mark.parametrize(
+    ("output", "kind", "number"),
+    [
+        ("Hardware watchpoint 1: *(unsigned int*)0x06000000\n(gdb) ", "write", 1),
+        ("Hardware read watchpoint 2: *(unsigned int*)0x06000004\n(gdb) ", "read", 2),
+        ("Hardware access watchpoint 3: *(unsigned int*)0x06000008\n(gdb) ", "access", 3),
+        (
+            "Hardware access (read/write) watchpoint 4: *(unsigned int*)0x0600000C\n(gdb) ",
+            "access",
+            4,
+        ),
+    ],
+)
+def test_set_watchpoint_accepts_every_hardware_kind(
+    backend: tuple[GdbBackend, list[_FakeProc]],
+    monkeypatch: pytest.MonkeyPatch,
+    output: str,
+    kind: str,
+    number: int,
+) -> None:
+    """`set_watchpoint` accepts write/read/access creation output."""
+    be, _ = backend
+    monkeypatch.setattr(be, "_cmd", lambda text, timeout=10: output)
+    assert be.set_watchpoint(0x06000000, kind) == number
+
+
+def test_breakpoints_parse_read_and_access_kinds(
+    backend: tuple[GdbBackend, list[_FakeProc]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`info breakpoints` read/access rows are listed with normalized kinds."""
+    be, _ = backend
+    out = (
+        "Num     Type           Disp Enb Address    What\n"
+        "1       breakpoint     keep y   0x02000000 <main>\n"
+        "2       hw watchpoint  keep y              *(unsigned int*)0x06000000\n"
+        "3       read watchpoint keep y             *(unsigned int*)0x06000004\n"
+        "4       acc watchpoint keep y              *(unsigned int*)0x06000008\n"
+        "5       hw breakpoint  keep n   0x02000010\n"
+        "        stop only if r0 == 1\n"
+    )
+    monkeypatch.setattr(be, "_cmd", lambda text, timeout=10: out)
+    bps = be.breakpoints()
+    assert [(bp.number, bp.kind, bp.address, bp.enabled, bp.hardware) for bp in bps] == [
+        (1, "breakpoint", 0x02000000, True, False),
+        (2, "watchpoint", 0x06000000, True, True),
+        (3, "read-watchpoint", 0x06000004, True, True),
+        (4, "access-watchpoint", 0x06000008, True, True),
+        (5, "breakpoint", 0x02000010, False, True),
+    ]
+
+
+def test_remove_missing_breakpoint_raises(
+    backend: tuple[GdbBackend, list[_FakeProc]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Deleting a number gdb does not know is an error, not a silent success."""
+    be, _ = backend
+    monkeypatch.setattr(be, "_cmd", lambda text, timeout=10: "No breakpoint number 9.\n(gdb) ")
+    with pytest.raises(DebugError):
+        be.remove(9)
+
+
+def test_remove_existing_breakpoint_succeeds(
+    backend: tuple[GdbBackend, list[_FakeProc]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Deleting an existing breakpoint succeeds."""
+    be, _ = backend
+    monkeypatch.setattr(be, "_cmd", lambda text, timeout=10: "Deleted breakpoint 1\n(gdb) ")
+    assert be.remove(1) is None
+
+
+def test_breakpoints_marks_software_watchpoint_as_not_hardware(
+    backend: tuple[GdbBackend, list[_FakeProc]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A plain `watchpoint` row is gdb's software fallback, not a hardware slot."""
+    be, _ = backend
+    out = (
+        "Num     Type           Disp Enb Address    What\n"
+        "1       watchpoint     keep y              *(unsigned int*)0x06000000\n"
+    )
+    monkeypatch.setattr(be, "_cmd", lambda text, timeout=10: out)
+    bp = be.breakpoints()[0]
+    assert bp.kind == "watchpoint"
+    assert bp.hardware is False

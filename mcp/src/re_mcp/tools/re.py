@@ -1,9 +1,60 @@
 """MCP tools for RE workflows: watchpoints, snapshots and symbols."""
 from ..application.snapshots import SnapshotError
 from ..application.watchpoints import Watchpoints
+from ..domain.addresses import describe_address, parse_address
+from ..domain.overlays import OverlayHit
 from ..domain.symbols import SymbolTable
+from ..infra.control import ControlError
 from ..infra.gdb import DebugError
-from .app import bridge, debug_error, mcp
+from ..infra.ndsrom import NdsRomError
+from .app import bridge, debug_error, error, mcp
+
+
+def _overlay_dict(hit: OverlayHit) -> dict:
+    """Serialize an overlay hit for a tool response."""
+    overlay = hit.overlay
+    return {
+        "core": overlay.core,
+        "index": overlay.index,
+        "ram_address": overlay.ram_address,
+        "ram_size": overlay.ram_size,
+        "bss_size": overlay.bss_size,
+        "file_id": overlay.file_id,
+        "offset": hit.offset,
+    }
+
+
+@mcp.tool()
+def addr_valid(value: str | int) -> dict:
+    """Validate/normalize an ARM9 address and resolve its region and overlay.
+
+    Parameters:
+        value (str | int): Address as ``0x``-hex, decimal text or integer.
+
+    Returns:
+        dict: ``{"value_dec", "value_hex", "aligned4", "mapped", "region",
+        "overlay"}`` or ``{"error", "hint"?}``.
+    """
+    try:
+        addr = parse_address(value)
+    except ValueError as exc:
+        return error(exc, "Use hexadecimal (0x...) ou decimal (0..0xFFFFFFFF).")
+    info = describe_address(addr)
+    overlay: dict | None = None
+    try:
+        hit = bridge.overlays().overlay_for_address(addr)
+    except (NdsRomError, ControlError):
+        hit = None
+    if hit is not None:
+        overlay = _overlay_dict(hit)
+    return {
+        "value_dec": info.value,
+        "value_hex": info.value_hex,
+        "aligned4": info.aligned4,
+        "mapped": info.mapped,
+        "region": info.region.name if info.region else None,
+        "overlay": overlay,
+    }
 
 
 @mcp.tool()

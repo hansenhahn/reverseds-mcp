@@ -20,6 +20,9 @@ goal, the tools, and the steps.
     stepping, disassembly.
 - **re-mcp** connects to the socket (bind-mount) and the stub (host network). Verify with
   `health_check`.
+- **Provenance/confidence tools**: `rom_info` (the emulator is the source of truth for the
+  running ROM), `addr_valid` (hex/dec, alignment, ARM9 region, overlay), `debug_slots`
+  (hardware watchpoint slots) and `list_breakpoints` (write/read/access).
 - **The two-channel golden rule**: attaching the debugger halts the CPU; without it, the
   emulator runs free. `emu_step_frame` bridges them (see Technique 1).
 
@@ -99,6 +102,43 @@ Dump the relevant VRAM window (`mem_dump_file`, e.g. OBJ `0x06400000`/`0x0660000
 `0x06000000`/`0x06200000`) and view it as a **tile sheet** (4bpp/8bpp, common strides 8/16/32
 tiles per row). Recognizable glyphs ("DECEMB", "19") confirm the text lives in that bank, and
 the neighboring tiles give the atlas. Then use Technique 2 to render the actual composition.
+
+## Technique 7 — Confidence: address first, prove the write
+
+**Goal:** eliminate silent errors before chasing causality.
+
+1. `rom_info` — confirm which ROM is actually loaded (the emulator is the source of truth;
+   never trust a path from the host).
+2. `addr_valid(value)` — normalize the hex/dec address, check 4-byte alignment, ARM9 region
+   and overlay **before** any `mem_write`/`set_breakpoint`. Unmapped is a valid result
+   (`mapped=false`), not an error.
+3. `debug_slots()` + `list_breakpoints` — see **hardware** slot usage, whether a watchpoint
+   fell back to software (`hardware=false`), and every write/read/access watchpoint before
+   blaming the stub. Read watchpoints work; access watchpoints may be refused by the stub
+   (the error is real, not a parser bug).
+4. **Prove the write** with a watchpoint (`find_writer`/`set_watchpoint`); a NOP + screenshot
+   is not proof (residual tiles/atlases lie).
+5. Re-check `addr_valid`/`rom_info` after an overlay reload or savestate change.
+
+## Canonical flow (7 phases)
+
+1. **Inventory/provenance** — `rom_info`, `overlay_list`/`overlay_for_address`, savestate and
+   build identity must agree.
+2. **Locate the displayed layer** — `video_state`, `vram_layout`, `render_layer`.
+3. **Display → data** — cell → tile → palette → RAM source (`mem_dump_file`, `state_diff`).
+4. **Find the writer** — watchpoint (conditioned) + stack; `debug_slots` before arming.
+5. **Model in C** — contract first (args/offsets/effects), then the body; validate at runtime.
+6. **Prove with a minimal patch** — one instruction, capture, compare; control staleness.
+7. **Package** — overlay decompress → `armips` → recompress; verify only expected words changed.
+
+## Anti-patterns
+
+- Patching composition/measure/bbox and expecting the display to change.
+- Concluding from a NOP screenshot without checking staleness.
+- Editing VRAM and assuming the RAM map *is* the display (or vice versa).
+- Mixing builds (ROM × savestate × overlay) or trusting a host ROM path.
+- Using the gdb CLI while the MCP holds the stub.
+- Writing an address without `addr_valid` ("it looked right in hex").
 
 ## Golden rules
 

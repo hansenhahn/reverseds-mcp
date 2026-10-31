@@ -28,6 +28,49 @@ class Breakpoint:
     address: int | None
     condition: str | None
     enabled: bool
+    hardware: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class HardwareSlots:
+    """Hardware watchpoint usage of the connected core."""
+
+    core: str | None
+    limit: int
+    breakpoints: tuple[Breakpoint, ...]
+
+    @property
+    def watchpoints(self) -> tuple[Breakpoint, ...]:
+        """Every watchpoint known to the stub (hardware and software)."""
+        return tuple(bp for bp in self.breakpoints if "watchpoint" in bp.kind)
+
+    @property
+    def hardware_watchpoints(self) -> tuple[Breakpoint, ...]:
+        """The watchpoints actually using a hardware slot."""
+        return tuple(bp for bp in self.watchpoints if bp.hardware)
+
+    @property
+    def software(self) -> tuple[Breakpoint, ...]:
+        """Watchpoints running in gdb's software fallback."""
+        return tuple(bp for bp in self.watchpoints if not bp.hardware)
+
+    @property
+    def used(self) -> int:
+        """Number of hardware watchpoint slots in use."""
+        return len(self.hardware_watchpoints)
+
+    @property
+    def free(self) -> int:
+        """Number of free hardware watchpoint slots."""
+        return max(0, self.limit - self.used)
+
+    @property
+    def by_kind(self) -> dict[str, int]:
+        """Hardware watchpoint count per normalized kind."""
+        counts: dict[str, int] = {}
+        for watchpoint in self.hardware_watchpoints:
+            counts[watchpoint.kind] = counts.get(watchpoint.kind, 0) + 1
+        return counts
 
 
 @dataclass(frozen=True, slots=True)
