@@ -136,7 +136,6 @@ class Ctx:
         env = {
             **os.environ,
             "RE_MCP_CONTROL_SOCKET": self.socket,
-            "RE_MCP_ROM": str(self.rom),
             "RE_MCP_OUT_DIR": str(self.out_dir),
         }
         params = StdioServerParameters(

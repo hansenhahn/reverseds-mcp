@@ -49,6 +49,18 @@ def test_empty_body_is_transport_error() -> None:
     b.close()
 
 
+def test_call_reads_binary_payload() -> None:
+    """A response announcing a binary payload is followed by the raw bytes."""
+    a, b = socket.socketpair()
+    channel = _channel(a)
+    b.sendall(_frame({"jsonrpc": "2.0", "id": 1, "result": {"binary": {"bytes": 4}}}))
+    b.sendall((4).to_bytes(4, "big") + b"DATA")
+    result = channel.call("rom.read", {"offset": 0, "size": 4})
+    assert result["binary"]["data"] == b"DATA"
+    a.close()
+    b.close()
+
+
 def test_error_response_is_control_error() -> None:
     """A JSON-RPC error response raises ControlError with the server message."""
     a, b = socket.socketpair()

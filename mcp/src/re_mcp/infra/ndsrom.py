@@ -1,51 +1,106 @@
-"""Native NDS ROM filesystem and overlays (replaces `ndstool`).
+"""NDS ROM filesystem and overlays served by the emulator over the control channel.
 
-Opens the ROM, reads the header and the FNT/FAT/overlay tables directly from the file,
-and delegates parsing to the domain (`NdsFs`, `OverlayTable`). No external tool.
+The emulator is the source of truth: the ROM header, FNT/FAT tables, overlay tables and file
+contents are read with ``rom.info``/``rom.read``. Parsing stays in the domain
+(`NdsFs`, `OverlayTable`); this adapter only moves bytes and detects a ROM change.
 """
-from typing import BinaryIO
+import threading
 
-from ..domain.cartfs import FileEntry, NdsFs, NdsHeader
+from ..domain.cartfs import FileEntry, NdsFs, NdsHeader, RomInfo
 from ..domain.overlays import Overlay, OverlayHit, OverlayTable
-from ..application.ports import CartFs, Overlays
+from ..application.ports import CartFs, ControlChannel, Overlays
 
 _HEADER_SIZE = 0x60
 _CORES = ("arm9", "arm7")
+_READ_CHUNK = 4 * 1024 * 1024
 
 
 class NdsRomError(RuntimeError):
-    """Error opening or parsing the ROM."""
+    """Error reading or parsing the ROM loaded in the emulator."""
 
 
-class NdsRom(CartFs, Overlays):
-    """Filesystem and overlays of an NDS ROM, read directly from the file."""
+class ChannelRom(CartFs, Overlays):
+    """Filesystem and overlays of the ROM loaded in the emulator."""
 
-    def __init__(self, rom_path: str) -> None:
-        """Open the ROM and parse the header, FNT/FAT and the overlay tables.
+    def __init__(self, channel: ControlChannel) -> None:
+        """Read the ROM from the control channel on demand.
 
         Parameters:
-            rom_path (str): ROM path.
+            channel (ControlChannel): A connected control channel.
+        """
+        self._channel = channel
+        self._lock = threading.RLock()
+        self._info: RomInfo | None = None
+        self._fs: NdsFs | None = None
+        self._overlays: dict[str, OverlayTable] = {}
+
+    def info(self) -> RomInfo:
+        """Return the identity of the loaded ROM, reloading it when it changed.
+
+        Returns:
+            RomInfo: The loaded ROM identity (``loaded=False`` when there is no cart).
 
         Raises:
-            NdsRomError: If the ROM cannot be opened.
+            ControlError: If the control channel fails.
         """
-        self._path = rom_path
-        self._fh: BinaryIO
-        try:
-            self._fh = open(rom_path, "rb")
-        except OSError as exc:
-            raise NdsRomError(f"não abriu a ROM {rom_path}: {exc}") from exc
+        with self._lock:
+            result = self._channel.call("rom.info")
+            info = RomInfo(
+                loaded=bool(result.get("loaded", False)),
+                name=str(result.get("name") or ""),
+                path=str(result.get("path") or ""),
+                size=int(result.get("size") or 0),
+                gamecode=str(result.get("gamecode") or ""),
+                checksum=int(result.get("checksum") or 0),
+            )
+            if not info.loaded:
+                self._info = info
+                self._fs = None
+                self._overlays = {}
+                return info
+            if info != self._info:
+                self._load(info)
+            return info
 
+    def refresh(self) -> RomInfo:
+        """Reload the loaded ROM when it changed and fail when there is no cart.
+
+        Returns:
+            RomInfo: The loaded ROM identity.
+
+        Raises:
+            NdsRomError: If there is no ROM loaded in the emulator.
+            ControlError: If the control channel fails.
+        """
+        info = self.info()
+        if not info.loaded:
+            raise NdsRomError("nenhuma ROM carregada no emulador")
+        return info
+
+    def _load(self, info: RomInfo) -> None:
         header = NdsHeader.from_bytes(self._read(0, _HEADER_SIZE))
-        self._fs = NdsFs.from_bytes(
+        fs = NdsFs.from_bytes(
             self._read(header.fnt_offset, header.fnt_size),
             self._read(header.fat_offset, header.fat_size),
         )
-        self._overlays = {core: self._read_overlays(core, header) for core in _CORES}
+        overlays = {core: self._read_overlays(core, header) for core in _CORES}
+        self._info = info
+        self._fs = fs
+        self._overlays = overlays
 
     def _read(self, offset: int, size: int) -> bytes:
-        self._fh.seek(offset)
-        return self._fh.read(size)
+        data = bytearray()
+        while len(data) < size:
+            chunk = min(_READ_CHUNK, size - len(data))
+            result = self._channel.call(
+                "rom.read", {"offset": offset + len(data), "size": chunk}
+            )
+            binary = result.get("binary")
+            payload = binary.get("data") if isinstance(binary, dict) else None
+            if not isinstance(payload, (bytes, bytearray)) or len(payload) != chunk:
+                raise NdsRomError("resposta inválida de rom.read")
+            data.extend(payload)
+        return bytes(data)
 
     def _read_overlays(self, core: str, header: NdsHeader) -> OverlayTable:
         if core == "arm9":
@@ -56,30 +111,41 @@ class NdsRom(CartFs, Overlays):
             return OverlayTable([])
         return OverlayTable.from_bytes(self._read(offset, size), core)
 
+    def _snapshot(self) -> tuple[NdsFs, dict[str, OverlayTable]]:
+        with self._lock:
+            if self._fs is None:
+                info = self.info()
+                if not info.loaded:
+                    raise NdsRomError("nenhuma ROM carregada no emulador")
+            assert self._fs is not None
+            return self._fs, self._overlays
+
     def file_count(self) -> int:
-        return self._fs.file_count()
+        fs, _ = self._snapshot()
+        return fs.file_count()
 
     def files(self) -> list[FileEntry]:
-        return self._fs.files()
+        fs, _ = self._snapshot()
+        return fs.files()
 
     def file_for_offset(self, offset: int) -> str | None:
-        return self._fs.file_for_offset(offset)
+        fs, _ = self._snapshot()
+        return fs.file_for_offset(offset)
 
     def read_file(self, path: str) -> bytes:
-        span = self._fs.span(path)
+        fs, _ = self._snapshot()
+        span = fs.span(path)
         if span is None:
             raise NdsRomError(f"arquivo não encontrado: {path}")
         return self._read(span.start, span.size)
 
     def overlay_list(self, core: str) -> list[Overlay]:
-        if core not in self._overlays:
+        _, overlays = self._snapshot()
+        if core not in overlays:
             raise NdsRomError(f"core desconhecido: {core!r} (use 'arm9' ou 'arm7')")
-        return self._overlays[core].entries()
+        return overlays[core].entries()
 
     def overlay_for_address(self, addr: int, core: str = "arm9") -> OverlayHit | None:
-        table = self._overlays.get(core)
+        _, overlays = self._snapshot()
+        table = overlays.get(core)
         return table.for_address(addr) if table is not None else None
-
-    def close(self) -> None:
-        """Close the ROM file."""
-        self._fh.close()

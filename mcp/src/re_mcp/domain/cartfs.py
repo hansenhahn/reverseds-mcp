@@ -61,6 +61,18 @@ class NdsHeader:
 
 
 @dataclass(frozen=True, slots=True)
+class RomInfo:
+    """Identity of the ROM currently loaded in the emulator."""
+
+    loaded: bool
+    name: str
+    path: str
+    size: int
+    gamecode: str
+    checksum: int
+
+
+@dataclass(frozen=True, slots=True)
 class FatEntry:
     """A file's ``[start, end)`` range in the ROM."""
 
