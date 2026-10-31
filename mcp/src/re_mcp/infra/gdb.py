@@ -114,6 +114,10 @@ class GdbBackend(Debugger):
         """Return the configured hardware watchpoint limit."""
         return WATCHPOINT_LIMIT
 
+    def refresh_registers(self) -> None:
+        """Flush gdb's register cache (e.g. after a reset outside gdb)."""
+        self._cmd("maintenance flush register-cache")
+
     def read_register(self, name: str) -> int:
         """Read a register by name (e.g. ``pc``).
 
