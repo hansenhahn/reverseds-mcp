@@ -42,6 +42,11 @@ def test_lists_observability_tools() -> None:
         assert tool in names
 
 
+def test_lists_rom_info_tool() -> None:
+    """The loaded-ROM identity tool is exposed."""
+    assert "rom_info" in asyncio.run(_list_tools())
+
+
 def test_lists_confidence_tools() -> None:
     """Wave 0 tools are exposed (slots and address validation)."""
     names = asyncio.run(_list_tools())

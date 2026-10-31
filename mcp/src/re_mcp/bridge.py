@@ -6,12 +6,13 @@ is only opened on the first call, so the MCP starts even without the emulator ru
 from .config import Config
 from .application.ports import CartFs, ControlChannel, Debugger, FileStore, Overlays
 from .application.snapshots import Snapshots
+from .domain.cartfs import RomInfo
 from .domain.io import IoMap
 from .domain.symbols import SymbolTable
 from .infra.control import UnixControlChannel
 from .infra.files import OutDir
 from .infra.gdb import GdbBackend
-from .infra.ndsrom import NdsRom, NdsRomError
+from .infra.ndsrom import ChannelRom, NdsRomError
 
 
 class Bridge:
@@ -26,7 +27,7 @@ class Bridge:
         self._config = config
         self._control: ControlChannel | None = None
         self._debugger: Debugger | None = None
-        self._rom: NdsRom | None = None
+        self._rom: ChannelRom | None = None
         self._symbols = SymbolTable([])
         self._files: OutDir | None = None
         self._snapshots: Snapshots | None = None
@@ -102,32 +103,55 @@ class Bridge:
             )
         return self._debugger
 
-    def _rom_instance(self) -> NdsRom:
+    def _rom_instance(self) -> ChannelRom:
         if self._rom is None:
-            if not self._config.rom_path:
-                raise NdsRomError("ROM não configurada (defina RE_MCP_ROM)")
-            self._rom = NdsRom(self._config.rom_path)
+            self._rom = ChannelRom(self.control())
         return self._rom
 
+    def refresh_rom(self) -> RomInfo:
+        """Reload the emulator ROM when it changed and fail when there is no cart.
+
+        Returns:
+            RomInfo: The loaded ROM identity.
+
+        Raises:
+            NdsRomError: If there is no ROM loaded in the emulator.
+            ControlError: If the control channel fails.
+        """
+        return self._rom_instance().refresh()
+
+    def rom_info(self) -> RomInfo:
+        """Return the identity of the ROM loaded in the emulator.
+
+        Returns:
+            RomInfo: The loaded ROM identity (``loaded=False`` without a cart).
+
+        Raises:
+            ControlError: If the control channel fails.
+        """
+        return self._rom_instance().info()
+
     def cartfs(self) -> CartFs:
-        """Return the ROM filesystem, opening it on the first call.
+        """Return the ROM filesystem served by the emulator.
 
         Returns:
             CartFs: The ROM filesystem.
 
         Raises:
-            NdsRomError: If the ROM is not configured or cannot be parsed.
+            NdsRomError: If there is no ROM loaded in the emulator.
+            ControlError: If the control channel fails.
         """
         return self._rom_instance()
 
     def overlays(self) -> Overlays:
-        """Return the ROM overlay parsing, opening it on the first call.
+        """Return the ROM overlay tables served by the emulator.
 
         Returns:
             Overlays: The ROM overlay tables.
 
         Raises:
-            NdsRomError: If the ROM is not configured or cannot be parsed.
+            NdsRomError: If there is no ROM loaded in the emulator.
+            ControlError: If the control channel fails.
         """
         return self._rom_instance()
 
@@ -139,6 +163,4 @@ class Bridge:
         if self._debugger is not None:
             self._debugger.close()
             self._debugger = None
-        if self._rom is not None:
-            self._rom.close()
-            self._rom = None
+        self._rom = None

@@ -8,6 +8,37 @@ from ..infra.ndsrom import NdsRomError
 from .app import bridge, error, mcp
 
 
+def _rom_error(exc: Exception) -> dict:
+    """Map a ROM/channel failure to the tool error contract."""
+    if isinstance(exc, ControlError):
+        return error(
+            exc, "Verifique se o melonDS está rodando com o canal de controle habilitado."
+        )
+    return error(exc)
+
+
+@mcp.tool()
+def rom_info() -> dict:
+    """Return the ROM loaded in the emulator (the source of truth for cart tools).
+
+    Returns:
+        dict: ``{"loaded", "name", "path", "size", "gamecode", "checksum"}`` or
+        ``{"error": ...}``.
+    """
+    try:
+        info = bridge.rom_info()
+    except (NdsRomError, ControlError) as exc:
+        return _rom_error(exc)
+    return {
+        "loaded": info.loaded,
+        "name": info.name,
+        "path": info.path,
+        "size": info.size,
+        "gamecode": info.gamecode,
+        "checksum": info.checksum,
+    }
+
+
 @mcp.tool()
 def cart_file(offset: int) -> dict:
     """Translate a ROM offset into the corresponding NitroFS file.
@@ -19,9 +50,10 @@ def cart_file(offset: int) -> dict:
         dict: ``{"file": ...}`` or ``{"error": ...}``.
     """
     try:
+        bridge.refresh_rom()
         path = bridge.cartfs().file_for_offset(offset)
-    except NdsRomError as exc:
-        return error(exc)
+    except (NdsRomError, ControlError) as exc:
+        return _rom_error(exc)
     if path is None:
         return {"file": None, "error": "offset não pertence a nenhum arquivo NitroFS"}
     return {"file": path}
@@ -35,9 +67,10 @@ def cart_list() -> dict:
         dict: ``{"total": N, "files": [{"id", "path"}]}`` or ``{"error": ...}``.
     """
     try:
+        bridge.refresh_rom()
         entries = bridge.cartfs().files()
-    except NdsRomError as exc:
-        return error(exc)
+    except (NdsRomError, ControlError) as exc:
+        return _rom_error(exc)
     return {
         "total": len(entries),
         "files": [{"id": entry.file_id, "path": entry.path} for entry in entries],
@@ -55,9 +88,10 @@ def cart_read(path: str) -> dict:
         dict: ``{"path", "size"}`` or ``{"error": ...}``.
     """
     try:
+        bridge.refresh_rom()
         data = bridge.cartfs().read_file(path)
-    except NdsRomError as exc:
-        return error(exc)
+    except (NdsRomError, ControlError) as exc:
+        return _rom_error(exc)
     out_path = bridge.files().write_bytes(os.path.basename(path) or "cart_file.bin", data)
     return {"path": out_path, "size": len(data)}
 
@@ -77,10 +111,11 @@ def cart_read_files(seconds: float = 3.0, batch: int = 256, timeout_ms: int = 10
         dict: ``{"total": N, "files": {file: count}}`` or ``{"error": ...}``.
     """
     try:
+        bridge.refresh_rom()
         channel = bridge.control()
         fs = bridge.cartfs()
-    except (ControlError, NdsRomError) as exc:
-        return {"error": str(exc)}
+    except (NdsRomError, ControlError) as exc:
+        return _rom_error(exc)
     try:
         files = CartTrace(channel).by_file(seconds, fs, batch, timeout_ms)
     except TraceError as exc:
@@ -111,11 +146,12 @@ def overlay_list(core: str | None = None) -> dict:
         dict: ``{"arm9": [...], "arm7": [...]}`` (or just the requested core) or ``{"error": ...}``.
     """
     try:
+        bridge.refresh_rom()
         overlays = bridge.overlays()
         cores = [core] if core else ["arm9", "arm7"]
         return {name: [_overlay_dict(o) for o in overlays.overlay_list(name)] for name in cores}
-    except NdsRomError as exc:
-        return error(exc)
+    except (NdsRomError, ControlError) as exc:
+        return _rom_error(exc)
 
 
 @mcp.tool()
@@ -130,9 +166,10 @@ def overlay_for_address(addr: int, core: str = "arm9") -> dict:
         dict: ``{"overlay": {...}, "offset"}`` or ``{"overlay": None}``.
     """
     try:
+        bridge.refresh_rom()
         hit = bridge.overlays().overlay_for_address(addr, core)
-    except NdsRomError as exc:
-        return error(exc)
+    except (NdsRomError, ControlError) as exc:
+        return _rom_error(exc)
     if hit is None:
         return {"overlay": None}
     return {"overlay": _overlay_dict(hit.overlay), "offset": hit.offset}

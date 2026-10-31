@@ -4,8 +4,8 @@
 # Pré-requisitos:
 #   - melonDS rodando com o canal de controle (Socket configurado no melonDS)
 #
-# A ROM é um stopgap: use o override docker-compose.rom.yml enquanto o emulador
-# não for a fonte da verdade da ROM (ver ROADMAP). O deploy base é agnóstico.
+# A ROM vem do emulador pelo canal de controle (`rom.info`/`rom.read`); não há
+# bind-mount nem caminho fixo de ROM.
 #
 # `network_mode: host` é necessário para o gdb alcançar o stub em 127.0.0.1:3333
 # (dentro do contêiner, 127.0.0.1 seria o próprio contêiner) e para o servidor

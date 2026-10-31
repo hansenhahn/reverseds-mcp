@@ -2,8 +2,54 @@
 import struct
 from pathlib import Path
 
+import pytest
+
 from re_mcp.domain.cartfs import Fat, Fnt, NdsHeader
-from re_mcp.infra.ndsrom import NdsRom
+from re_mcp.infra.ndsrom import ChannelRom, NdsRomError
+
+
+class FakeChannel:
+    """Control channel serving a synthetic ROM from memory."""
+
+    def __init__(
+        self, rom: bytes, *, name: str = "game.nds", gamecode: str = "TEST", checksum: int = 1
+    ) -> None:
+        self.rom = rom
+        self.name = name
+        self.gamecode = gamecode
+        self.checksum = checksum
+        self.loaded = True
+
+    def call(
+        self, method: str, params: dict | None = None, timeout: float | None = None
+    ) -> dict:
+        if method == "rom.info":
+            if not self.loaded:
+                return {"loaded": False}
+            return {
+                "loaded": True,
+                "name": self.name,
+                "path": f"/roms/{self.name}",
+                "size": len(self.rom),
+                "gamecode": self.gamecode,
+                "checksum": self.checksum,
+            }
+        if method == "rom.read":
+            offset = int((params or {})["offset"])
+            size = int((params or {})["size"])
+            data = self.rom[offset:offset + size]
+            return {
+                "offset": offset,
+                "size": len(data),
+                "binary": {"bytes": len(data), "data": data},
+            }
+        raise AssertionError(f"método inesperado: {method}")
+
+    def read_message(self, timeout: float) -> dict | None:
+        return None
+
+    def close(self) -> None:
+        pass
 
 
 def _fnt() -> bytes:
@@ -15,18 +61,35 @@ def _fnt() -> bytes:
     return root + sub + root_entries + sub_entries
 
 
+def _fnt_alt() -> bytes:
+    """Synthetic FNT with a single file: `/c.bin` (id 0)."""
+    root = struct.pack("<IHH", 8, 0, 1)
+    return root + b"\x05c.bin" + b"\x00"
+
+
 def _fat() -> bytes:
     """Synthetic FAT: id 0 → [0x100,0x110); id 1 → [0x200,0x208)."""
     return struct.pack("<II", 0x100, 0x110) + struct.pack("<II", 0x200, 0x208)
 
 
-def _rom(path: Path) -> Path:
+def _fat_alt() -> bytes:
+    """Synthetic FAT: id 0 → [0x100,0x108)."""
+    return struct.pack("<II", 0x100, 0x108)
+
+
+def _rom(
+    path: Path,
+    *,
+    fnt: bytes | None = None,
+    fat: bytes | None = None,
+    gamecode: str = "TEST",
+) -> Path:
     """Build a synthetic ROM (header + FNT + FAT + data + overlay)."""
-    fnt, fat = _fnt(), _fat()
+    fnt, fat = fnt or _fnt(), fat or _fat()
     fnt_off, fat_off, ovl_off = 0x60, 0x60 + len(fnt), 0x300
     size = max(ovl_off + 32, 0x210)
     rom = bytearray(size)
-    rom[0x0C:0x10] = b"TEST"
+    rom[0x0C:0x10] = gamecode.encode("ascii")
     for off, val in (
         (0x40, fnt_off), (0x44, len(fnt)), (0x48, fat_off), (0x4C, len(fat)),
         (0x50, ovl_off), (0x54, 32), (0x58, 0), (0x5C, 0),
@@ -65,9 +128,10 @@ def test_fat_ranges() -> None:
     assert not fat.entries[0].contains(0x110)
 
 
-def test_ndsrom_list_and_offset(tmp_path: Path) -> None:
-    """The adapter lists files and maps offset→file."""
-    rom = NdsRom(str(_rom(tmp_path / "list.bin")))
+def test_channelrom_list_and_offset(tmp_path: Path) -> None:
+    """The adapter lists files and maps offset→file through the channel."""
+    rom = ChannelRom(FakeChannel(_rom(tmp_path / "list.bin").read_bytes()))
+    rom.refresh()
     assert rom.file_count() == 2
     assert [e.path for e in rom.files()] == ["/a.txt", "/sub/b.bin"]
     assert rom.file_for_offset(0x108) == "/a.txt"
@@ -75,8 +139,36 @@ def test_ndsrom_list_and_offset(tmp_path: Path) -> None:
     assert rom.file_for_offset(0x150) is None
 
 
-def test_ndsrom_read_file(tmp_path: Path) -> None:
-    """The adapter reads the contents by path."""
-    rom = NdsRom(str(_rom(tmp_path / "read.bin")))
+def test_channelrom_read_file(tmp_path: Path) -> None:
+    """The adapter reads the contents by path through the channel."""
+    rom = ChannelRom(FakeChannel(_rom(tmp_path / "read.bin").read_bytes()))
+    rom.refresh()
     assert rom.read_file("/a.txt") == b"A" * 16
     assert rom.read_file("/sub/b.bin") == b"B" * 8
+
+
+def test_channelrom_reloads_when_rom_changes(tmp_path: Path) -> None:
+    """A different ROM identity remounts the filesystem."""
+    fake = FakeChannel(_rom(tmp_path / "first.bin").read_bytes())
+    rom = ChannelRom(fake)
+    rom.refresh()
+    assert [e.path for e in rom.files()] == ["/a.txt", "/sub/b.bin"]
+
+    alt = _rom(tmp_path / "second.bin", fnt=_fnt_alt(), fat=_fat_alt(), gamecode="NEW0")
+    fake.rom = alt.read_bytes()
+    fake.gamecode = "NEW0"
+    fake.checksum = 2
+
+    info = rom.refresh()
+    assert info.gamecode == "NEW0"
+    assert [e.path for e in rom.files()] == ["/c.bin"]
+
+
+def test_channelrom_without_rom(tmp_path: Path) -> None:
+    """Without a cart, info says so and refresh fails with a clear error."""
+    fake = FakeChannel(_rom(tmp_path / "none.bin").read_bytes())
+    fake.loaded = False
+    rom = ChannelRom(fake)
+    assert rom.info().loaded is False
+    with pytest.raises(NdsRomError):
+        rom.refresh()

@@ -15,10 +15,8 @@
 #   emulador: git fetch origin <branch>    + switch <branch> + pull --ff-only + build
 # (aborta se houver mudanças locais). O emulador é derrubado antes do build.
 #
-# O deploy é AGNÓSTICO à ROM. Enquanto o emulador não for a fonte da verdade da
-# ROM, inclua o override com MCP_COMPOSE_EXTRA (lista separada por ':'):
-#   ROM_PATH="/caminho/jogo.nds" \
-#     MCP_COMPOSE_EXTRA="mcp/docker-compose.rom.yml" ./deploy.sh up
+# O deploy é agnóstico à ROM: o MCP lê a ROM carregada no emulador pelo canal
+# de controle (`rom.info`/`rom.read`), sem bind-mount nem caminho fixo.
 #
 # Variáveis (opcionais, com defaults):
 #   MELONDS_REPO     checkout do emulador        (default: ../melonDS)
@@ -28,7 +26,6 @@
 #   MELONDS_DIR      dir do canal de controle    (default: ~/melonds)
 #   OUT_DIR          dir de saída do MCP          (default: ~/re_mcp_out)
 #   MCP_PORT         porta HTTP                   (default: 8765)
-#   MCP_COMPOSE_EXTRA  overrides do compose (separados por ':')
 #
 # Depois, aponte o cliente para:  http://127.0.0.1:${MCP_PORT}/mcp
 set -euo pipefail
@@ -44,13 +41,6 @@ COMPOSE="$SCRIPT_DIR/mcp/docker-compose.yml"
 export MCP_PORT
 
 COMPOSE_ARGS=(-f "$COMPOSE")
-if [[ -n "${MCP_COMPOSE_EXTRA:-}" ]]; then
-  IFS=':' read -r -a extras <<< "$MCP_COMPOSE_EXTRA"
-  for extra in "${extras[@]}"; do
-    [[ -f "$extra" ]] || extra="$SCRIPT_DIR/$extra"
-    COMPOSE_ARGS+=(-f "$extra")
-  done
-fi
 
 sync_mcp() {
   echo ">> git (mcp): fetch + switch main + pull"

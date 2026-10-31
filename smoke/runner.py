@@ -51,7 +51,7 @@ async def _run_all(
 def main() -> int:
     """Parse args, boot the emulator, run the cases and report."""
     parser = argparse.ArgumentParser(prog="smoke")
-    parser.add_argument("--rom", default=os.environ.get("RE_MCP_ROM") or os.environ.get("SMOKE_ROM"))
+    parser.add_argument("--rom", default=os.environ.get("SMOKE_ROM"))
     parser.add_argument("--socket", default=DEFAULT_SOCKET)
     parser.add_argument("--melonds", default=os.environ.get("MELONDS_BIN", str(DEFAULT_MELONDS)))
     parser.add_argument("--out", default=None, help="output dir for captures (default: temp)")
@@ -61,7 +61,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.rom:
-        print("defina --rom (ou RE_MCP_ROM / SMOKE_ROM)", file=sys.stderr)
+        print("defina --rom (ou SMOKE_ROM)", file=sys.stderr)
         return 2
     rom = Path(args.rom).expanduser()
     melonds = Path(args.melonds).expanduser()
