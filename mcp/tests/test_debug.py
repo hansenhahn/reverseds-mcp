@@ -19,7 +19,9 @@ class FakeDebugger:
     def read_memory(self, addr: int, size: int) -> bytes:
         return b""
     def write_memory(self, addr: int, data: bytes) -> None: ...
-    def set_breakpoint(self, addr: int) -> int:
+    def set_breakpoint(
+        self, addr: int, condition: str | None = None, commands: list[str] | None = None
+    ) -> int:
         return 0
     def backtrace(self) -> list[StackFrame]:
         return []

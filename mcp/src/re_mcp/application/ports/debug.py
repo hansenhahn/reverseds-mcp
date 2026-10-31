@@ -83,11 +83,18 @@ class Debugger(Protocol):
         """
         ...
 
-    def set_breakpoint(self, addr: int) -> int:
+    def set_breakpoint(
+        self,
+        addr: int,
+        condition: str | None = None,
+        commands: list[str] | None = None,
+    ) -> int:
         """Create a code breakpoint at the address.
 
         Parameters:
             addr (int): Address.
+            condition (str | None): Optional gdb expression; gdb only stops when true.
+            commands (list[str] | None): Optional gdb commands run on the hit (one per line).
 
         Returns:
             int: The breakpoint number.

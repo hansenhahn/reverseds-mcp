@@ -17,6 +17,7 @@ class StackFrame:
     index: int
     pc: int
     function: str | None
+    source: str = "gdb"
 
 
 @dataclass(frozen=True, slots=True)

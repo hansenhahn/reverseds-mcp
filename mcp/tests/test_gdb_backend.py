@@ -253,3 +253,76 @@ def test_breakpoints_marks_software_watchpoint_as_not_hardware(
     bp = be.breakpoints()[0]
     assert bp.kind == "watchpoint"
     assert bp.hardware is False
+
+
+def test_set_breakpoint_applies_condition_and_commands(
+    backend: tuple[GdbBackend, list[_FakeProc]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Condition and commands are sent after creating the breakpoint."""
+    be, _ = backend
+    calls: list[str] = []
+
+    def fake_cmd(text: str, timeout: float = 10) -> str:
+        calls.append(text)
+        if text.startswith("break "):
+            return "Breakpoint 1 at 0x02000000\n(gdb) "
+        return "(gdb) "
+
+    monkeypatch.setattr(be, "_cmd", fake_cmd)
+    number = be.set_breakpoint(
+        0x02000000, "$r3 == 0x30", ["silent", "set {unsigned int}0x06000000 = 1", "continue"]
+    )
+    assert number == 1
+    assert calls == [
+        "break *0x2000000",
+        "condition 1 $r3 == 0x30",
+        "commands 1\nsilent\nset {unsigned int}0x06000000 = 1\ncontinue\nend",
+    ]
+
+
+def test_set_breakpoint_rolls_back_on_invalid_condition(
+    backend: tuple[GdbBackend, list[_FakeProc]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An invalid condition removes the breakpoint before raising."""
+    be, _ = backend
+    calls: list[str] = []
+
+    def fake_cmd(text: str, timeout: float = 10) -> str:
+        calls.append(text)
+        if text.startswith("break "):
+            return "Breakpoint 3 at 0x02000000\n(gdb) "
+        if text.startswith("condition "):
+            return 'No symbol "foo" in current context.\n(gdb) '
+        if text.startswith("delete "):
+            return "Deleted breakpoint 3\n(gdb) "
+        return "(gdb) "
+
+    monkeypatch.setattr(be, "_cmd", fake_cmd)
+    with pytest.raises(DebugError):
+        be.set_breakpoint(0x02000000, "foo == 1")
+    assert calls[-1] == "delete 3"
+
+
+@pytest.mark.parametrize("commands", [[""], ["silent\ncontinue"], ["end"]])
+def test_set_breakpoint_rejects_invalid_commands(
+    backend: tuple[GdbBackend, list[_FakeProc]],
+    monkeypatch: pytest.MonkeyPatch,
+    commands: list[str],
+) -> None:
+    """Empty, multi-line or reserved `end` commands are rejected with rollback."""
+    be, _ = backend
+    calls: list[str] = []
+
+    def fake_cmd(text: str, timeout: float = 10) -> str:
+        calls.append(text)
+        if text.startswith("break "):
+            return "Breakpoint 4 at 0x02000000\n(gdb) "
+        if text.startswith("delete "):
+            return "Deleted breakpoint 4\n(gdb) "
+        return "(gdb) "
+
+    monkeypatch.setattr(be, "_cmd", fake_cmd)
+    with pytest.raises(DebugError):
+        be.set_breakpoint(0x02000000, None, commands)
+    assert not any(call.startswith("commands ") for call in calls)
+    assert calls[-1] == "delete 4"

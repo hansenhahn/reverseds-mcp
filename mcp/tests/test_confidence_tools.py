@@ -14,6 +14,7 @@ class FakeDebugger:
     def __init__(self, breakpoints: list[Breakpoint] | None = None) -> None:
         self._breakpoints = breakpoints or []
         self.written: tuple[int, bytes] | None = None
+        self.breakpoint_args: tuple[int, str | None, list[str] | None] | None = None
 
     def core(self) -> str | None:
         return "arm9"
@@ -24,7 +25,10 @@ class FakeDebugger:
     def breakpoints(self) -> list[Breakpoint]:
         return self._breakpoints
 
-    def set_breakpoint(self, addr: int) -> int:
+    def set_breakpoint(
+        self, addr: int, condition: str | None = None, commands: list[str] | None = None
+    ) -> int:
+        self.breakpoint_args = (addr, condition, commands)
         return 11
 
     def write_memory(self, addr: int, data: bytes) -> None:
@@ -143,7 +147,30 @@ def test_set_breakpoint_echoes_normalized_address(
     """`set_breakpoint` includes the normalized address in the result."""
     monkeypatch.setattr(debug_tools, "bridge", FakeBridge())
     out = debug_tools.set_breakpoint(0x020A2D90)
-    assert out == {"number": 11, "addr": "0x020a2d90"}
+    assert out == {
+        "number": 11,
+        "addr": "0x020a2d90",
+        "condition": None,
+        "commands": [],
+    }
+
+
+def test_set_breakpoint_passes_condition_and_commands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`set_breakpoint` forwards condition and commands to the backend."""
+    debugger = FakeDebugger()
+    monkeypatch.setattr(debug_tools, "bridge", FakeBridge(debugger=debugger))
+    out = debug_tools.set_breakpoint(
+        0x020A1394, condition="$r0 == 2", commands=["silent", "continue"]
+    )
+    assert out["condition"] == "$r0 == 2"
+    assert out["commands"] == ["silent", "continue"]
+    assert debugger.breakpoint_args == (
+        0x020A1394,
+        "$r0 == 2",
+        ["silent", "continue"],
+    )
 
 
 def test_mem_write_echoes_address_and_size(monkeypatch: pytest.MonkeyPatch) -> None:
