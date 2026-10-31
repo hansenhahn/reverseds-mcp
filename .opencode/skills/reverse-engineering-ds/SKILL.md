@@ -120,6 +120,20 @@ the neighboring tiles give the atlas. Then use Technique 2 to render the actual 
    is not proof (residual tiles/atlases lie).
 5. Re-check `addr_valid`/`rom_info` after an overlay reload or savestate change.
 
+## Technique 8 — Conditional breakpoints and backtrace
+
+**Goal:** stop only on the event you care about and reconstruct the call chain.
+
+- `set_breakpoint(addr, condition="$r3 == 0x30")` — gdb evaluates the condition; you only
+  stop when it is true (register or memory: `*(unsigned short*)0x0600F448 != 0`).
+- `set_breakpoint(addr, commands=[...])` — commands run on the hit. Auto-patch pattern:
+  `["silent", "set {unsigned int}0x062003F0 = 0x...", "continue"]` (write the immediate and
+  keep running, no `resume → wait → mem_write` loop).
+- `debug_backtrace()` — gdb frames first (`source="gdb"`); when gdb returns fewer than four,
+  the MCP scans the stack (`sp..sp+0x800`) and appends even-aligned return addresses in ITCM /
+  main RAM / BIOS as `source="stack"`. Candidates are confirmed by a preceding `bl`/`blx`;
+  still treat stack frames as heuristic and confirm the call site before trusting them.
+
 ## Canonical flow (7 phases)
 
 1. **Inventory/provenance** — `rom_info`, `overlay_list`/`overlay_for_address`, savestate and

@@ -1,6 +1,7 @@
 """MCP tools for debugging (gdb): memory, registers, breakpoints and execution."""
 import json
 
+from ..application.backtrace import Backtrace
 from ..application.watchpoints import Watchpoints
 from ..domain.debug import Breakpoint
 from ..domain.disasm import Disassembler
@@ -201,20 +202,33 @@ def disassemble(addr: int, count: int = 16, mode: str = "arm") -> dict:
 
 
 @mcp.tool()
-def set_breakpoint(addr: int) -> dict:
-    """Create a code breakpoint at an address.
+def set_breakpoint(
+    addr: int,
+    condition: str | None = None,
+    commands: list[str] | None = None,
+) -> dict:
+    """Create a code breakpoint at an address, optionally conditional with actions.
 
     Parameters:
         addr (int): Address.
+        condition (str | None): Optional gdb expression; gdb only stops when true.
+        commands (list[str] | None): Optional gdb commands run on the hit (one per
+            line). Auto-patch example: ``["silent",
+            "set {unsigned int}0x062003F0 = 0x...", "continue"]``.
 
     Returns:
-        dict: ``{"number": N, "addr": "0x..."}`` or ``{"error": ...}``.
+        dict: ``{"number", "addr", "condition", "commands"}`` or ``{"error", "hint"?}``.
     """
     try:
-        number = bridge.debugger().set_breakpoint(addr)
+        number = bridge.debugger().set_breakpoint(addr, condition, commands)
     except DebugError as exc:
         return debug_error(exc)
-    return {"number": number, "addr": f"0x{addr:08x}"}
+    return {
+        "number": number,
+        "addr": f"0x{addr:08x}",
+        "condition": condition,
+        "commands": list(commands or []),
+    }
 
 
 @mcp.tool()
@@ -355,15 +369,21 @@ def debug_backtrace() -> dict:
     Requires the target to be stopped.
 
     Returns:
-        dict: ``{"frames": [{"index", "pc", "function"}]}`` or ``{"error", "hint"?}``.
+        dict: ``{"frames": [{"index", "pc", "function", "source"}]}`` or
+        ``{"error", "hint"?}``.
     """
     try:
-        frames = bridge.debugger().backtrace()
+        frames = Backtrace(bridge.debugger()).frames()
     except DebugError as exc:
         return debug_error(exc)
     return {
         "frames": [
-            {"index": frame.index, "pc": f"0x{frame.pc:08x}", "function": frame.function}
+            {
+                "index": frame.index,
+                "pc": f"0x{frame.pc:08x}",
+                "function": frame.function,
+                "source": frame.source,
+            }
             for frame in frames
         ]
     }

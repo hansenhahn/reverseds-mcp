@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-10-30
+goal: Achar quem escreveu um dado sem parar em tudo e sem depender do bt de 2
+  frames do gdb.

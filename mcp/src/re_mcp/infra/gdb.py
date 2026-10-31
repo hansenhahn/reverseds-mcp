@@ -186,20 +186,64 @@ class GdbBackend(Debugger):
         finally:
             os.unlink(path)
 
-    def set_breakpoint(self, addr: int) -> int:
+    _GDB_ERROR_RE = re.compile(
+        r"No symbol|Undefined command|Invalid|Cannot access memory|(?:^|\W)error(?:\W|$)",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _validate_commands(commands: list[str]) -> None:
+        """Reject commands that would break the gdb ``commands`` block."""
+        for command in commands:
+            if not command.strip():
+                raise DebugError("comando vazio")
+            if "\n" in command or "\r" in command:
+                raise DebugError("cada comando deve ser uma única linha")
+            if command.strip().lower() == "end":
+                raise DebugError("'end' é reservado para fechar o bloco de comandos")
+
+    def set_breakpoint(
+        self,
+        addr: int,
+        condition: str | None = None,
+        commands: list[str] | None = None,
+    ) -> int:
         """Create a code breakpoint at ``addr``.
 
         Parameters:
             addr (int): Address.
+            condition (str | None): Optional gdb expression; gdb only stops when true.
+            commands (list[str] | None): Optional gdb commands run on the hit.
 
         Returns:
             int: The breakpoint number.
+
+        Raises:
+            DebugError: If creation or configuration fails (the breakpoint is removed).
         """
         out = self._cmd(f"break *0x{addr:x}")
         match = re.search(r"Breakpoint (\d+)", out)
         if match is None:
             raise DebugError(f"não criou breakpoint: {out.strip()}")
-        return int(match.group(1))
+        number = int(match.group(1))
+        try:
+            if condition:
+                cond_out = self._cmd(f"condition {number} {condition}")
+                if self._GDB_ERROR_RE.search(cond_out):
+                    raise DebugError(f"condição inválida: {cond_out.strip()}")
+            if commands:
+                self._validate_commands(commands)
+                script = "\n".join(commands)
+                cmd_out = self._cmd(f"commands {number}\n{script}\nend")
+                if self._GDB_ERROR_RE.search(cmd_out):
+                    raise DebugError(f"comandos inválidos: {cmd_out.strip()}")
+        except DebugError:
+            try:
+                self.remove(number)
+            except DebugError:
+                pass
+            raise
+        return number
 
     def set_watchpoint(self, addr: int, kind: str, condition: str | None = None) -> int:
         """Create a hardware watchpoint (``write``/``read``/``access``).
