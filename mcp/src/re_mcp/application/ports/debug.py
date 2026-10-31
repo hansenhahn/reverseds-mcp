@@ -28,6 +28,10 @@ class Debugger(Protocol):
         """
         ...
 
+    def refresh_registers(self) -> None:
+        """Flush any client-side register cache so the next read hits the target."""
+        ...
+
     def read_register(self, name: str) -> int:
         """Read a register by name (e.g. ``pc``).
 

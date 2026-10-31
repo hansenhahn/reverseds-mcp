@@ -52,3 +52,10 @@ def test_lists_confidence_tools() -> None:
     names = asyncio.run(_list_tools())
     for tool in ("debug_slots", "addr_valid"):
         assert tool in names
+
+
+def test_lists_causal_runtime_tools() -> None:
+    """Cold reset and hit-log tools are exposed."""
+    names = asyncio.run(_list_tools())
+    for tool in ("emu_reset", "hit_log_start", "hit_log_stop", "hit_log_read", "hit_log_clear"):
+        assert tool in names

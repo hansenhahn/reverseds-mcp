@@ -66,6 +66,7 @@ class FakeBacktraceDebugger:
     def backtrace(self) -> list[StackFrame]:
         return self._frames
 
+    def refresh_registers(self) -> None: ...
     def read_register(self, name: str) -> int:
         return 0x02001000 if name == "pc" else 0x023FF000
 

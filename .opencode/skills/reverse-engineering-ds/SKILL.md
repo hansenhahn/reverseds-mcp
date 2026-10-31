@@ -134,6 +134,20 @@ the neighboring tiles give the atlas. Then use Technique 2 to render the actual 
   main RAM / BIOS as `source="stack"`. Candidates are confirmed by a preceding `bl`/`blx`;
   still treat stack frames as heuristic and confirm the call site before trusting them.
 
+## Technique 9 — Cold reset, hit log and DMA/VRAM watchpoints
+
+**Goal:** reproduce a boot deterministicamente e observar eventos sem parar a cada um.
+
+- `emu_reset()` — cold reset. BPs/WPs do stub sobrevivem; com o gdb anexado a CPU fica
+  parada na entrada de boot determinística (~`0x02000800` no KH) até `debug_resume`; sem gdb
+  o jogo volta a rodar.
+- `hit_log_start(core, capacity)` / `hit_log_read(core)` — registra hits de breakpoint e
+  watchpoint **sem parar**; `kind` é `breakpoint`, `write`, `read`, `access` ou `dma-write`;
+  `dropped` conta o que o ring descartou. Use `hit_log_clear`/`hit_log_stop` no fim.
+- **DMA/VRAM**: arme `set_watchpoint(vram_addr, "write")` e ligue o hit log; quando um DMA
+  preenche a faixa, o log mostra `dma-write` com o PC da instrução que programou o DMA (ex.:
+  `0x01ff860c`). Sem o log, o stop também cai nesse PC (via `CheckDmaWatchpt`).
+
 ## Canonical flow (7 phases)
 
 1. **Inventory/provenance** — `rom_info`, `overlay_list`/`overlay_for_address`, savestate and

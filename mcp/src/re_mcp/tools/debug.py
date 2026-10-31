@@ -426,3 +426,83 @@ def debug_slots() -> dict:
         "by_kind": slots.by_kind,
         "watchpoints": [_breakpoint_dict(bp) for bp in slots.watchpoints],
     }
+
+
+def _hit_list(result: dict) -> list[dict]:
+    """Format hit-log entries with hex addresses."""
+    hits = result.get("hits", [])
+    return [
+        {
+            "pc": f"0x{int(hit['pc']):08x}",
+            "addr": f"0x{int(hit['addr']):08x}",
+            "kind": hit.get("kind"),
+        }
+        for hit in hits
+    ]
+
+
+@mcp.tool()
+def hit_log_start(core: str = "arm9", capacity: int = 4096) -> dict:
+    """Start recording breakpoint/watchpoint hits without stopping.
+
+    Parameters:
+        core (str): ``arm9`` or ``arm7``.
+        capacity (int): Ring capacity (oldest hits dropped when full).
+
+    Returns:
+        dict: ``{"ok": true, "capacity": N}`` or ``{"error", "hint"?}``.
+    """
+    return control_call("gdb.hits.start", {"core": core, "capacity": capacity})
+
+
+@mcp.tool()
+def hit_log_stop(core: str = "arm9") -> dict:
+    """Stop recording hits (existing hits stay readable).
+
+    Parameters:
+        core (str): ``arm9`` or ``arm7``.
+
+    Returns:
+        dict: ``{"ok": true}`` or ``{"error", "hint"?}``.
+    """
+    return control_call("gdb.hits.stop", {"core": core})
+
+
+@mcp.tool()
+def hit_log_clear(core: str = "arm9") -> dict:
+    """Clear the hit log and its dropped counter.
+
+    Parameters:
+        core (str): ``arm9`` or ``arm7``.
+
+    Returns:
+        dict: ``{"ok": true}`` or ``{"error", "hint"?}``.
+    """
+    return control_call("gdb.hits.clear", {"core": core})
+
+
+@mcp.tool()
+def hit_log_read(core: str = "arm9", clear: bool = False) -> dict:
+    """Read the hit log, optionally clearing it afterwards.
+
+    Parameters:
+        core (str): ``arm9`` or ``arm7``.
+        clear (bool): Clear the log after a successful read.
+
+    Returns:
+        dict: ``{"count", "dropped", "hits": [{"pc", "addr", "kind"}]}`` or
+        ``{"error", "hint"?}``.
+    """
+    result = control_call("gdb.hits.read", {"core": core})
+    if "error" in result:
+        return result
+    hits = _hit_list(result)
+    if clear:
+        cleared = control_call("gdb.hits.clear", {"core": core})
+        if "error" in cleared:
+            return cleared
+    return {
+        "count": result.get("count", len(hits)),
+        "dropped": result.get("dropped", 0),
+        "hits": hits,
+    }

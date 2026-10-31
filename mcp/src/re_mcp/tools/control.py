@@ -280,6 +280,28 @@ def emu_step_frame(n: int = 1) -> dict:
 
 
 @mcp.tool()
+def emu_reset() -> dict:
+    """Cold-reset the machine, keeping gdb breakpoints/watchpoints.
+
+    With the debugger attached the CPU stays halted at the reset vector until
+    ``debug_resume``; without it the emulator boots again.
+
+    Returns:
+        dict: ``{"ok": true}`` or ``{"error", "hint"?}``.
+    """
+    result = control_call("emu.reset", timeout=30.0)
+    if "error" in result:
+        return result
+    try:
+        debugger = bridge.debugger()
+        if debugger.core() is not None:
+            debugger.refresh_registers()
+    except DebugError:
+        pass
+    return result
+
+
+@mcp.tool()
 def cart_trace_start(batch: int = 256, timeout_ms: int = 100, max_items: int = 65536) -> dict:
     """Start the cartridge read trace (overwrites any previous one).
 
