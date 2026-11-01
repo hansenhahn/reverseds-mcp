@@ -82,6 +82,7 @@ class ArgCheck:
     expected: int | str
     actual: int
     ok: bool
+    checked: bool = True
 
 
 @dataclass(frozen=True, slots=True)
