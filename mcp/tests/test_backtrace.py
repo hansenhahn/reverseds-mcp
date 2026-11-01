@@ -4,7 +4,7 @@ from typing import cast
 
 from re_mcp.application.backtrace import Backtrace
 from re_mcp.application.ports import Debugger
-from re_mcp.domain.backtrace import scan_return_addresses
+from re_mcp.domain.backtrace import StackScanner
 from re_mcp.domain.debug import StackFrame
 
 
@@ -23,7 +23,7 @@ def test_scan_accepts_even_code_addresses_and_dedupes() -> None:
         0x02003001,
         0xFFFF0010,
     )
-    assert scan_return_addresses(stack) == (
+    assert StackScanner().scan(stack) == (
         0x02001000,
         0x02001002,
         0x02002000,
@@ -34,17 +34,16 @@ def test_scan_accepts_even_code_addresses_and_dedupes() -> None:
 def test_scan_skips_excluded_and_stack_range() -> None:
     """Current PC, known frames and the stack range itself are skipped."""
     stack = _stack(0x02001000, 0x02002000, 0x02003000)
-    assert scan_return_addresses(
-        stack,
+    assert StackScanner(
         exclude={0x02001000},
         exclude_range=(0x02002000, 0x02002004),
-    ) == (0x02003000,)
+    ).scan(stack) == (0x02003000,)
 
 
 def test_scan_respects_limit() -> None:
     """The candidate list is capped."""
     stack = _stack(0x02001000, 0x02001004, 0x02001008)
-    assert scan_return_addresses(stack, limit=2) == (0x02001000, 0x02001004)
+    assert StackScanner(limit=2).scan(stack) == (0x02001000, 0x02001004)
 
 
 class FakeBacktraceDebugger:

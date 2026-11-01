@@ -18,74 +18,83 @@ class StructField:
     accesses: int
 
 
-def _access_width(mnemonic: str) -> int:
-    if mnemonic in ("ldrb", "strb", "ldrsb", "ldrsbt"):
-        return 1
-    if mnemonic in ("ldrh", "strh", "ldrsh", "ldrsht"):
-        return 2
-    if mnemonic in ("ldrd", "strd"):
-        return 8
-    if mnemonic.startswith("ldr") or mnemonic.startswith("str"):
-        return 4
-    return 0
+@dataclass(frozen=True, slots=True)
+class StructCandidate:
+    """A candidate struct: fields inferred from ``[rN, #imm]`` accesses."""
 
+    fields: tuple[StructField, ...]
 
-def scan_struct_accesses(
-    code: bytes, addr: int, mode: str = "arm"
-) -> tuple[StructField, ...]:
-    """Scan ``code`` for ``[rN, #imm]`` loads/stores and group by offset.
+    @classmethod
+    def scan(
+        cls, code: bytes, addr: int, mode: str = "arm"
+    ) -> "StructCandidate":
+        """Scan ``code`` for ``[rN, #imm]`` loads/stores and group by offset.
 
-    ``sp``/``pc`` bases are ignored. The result is an over-approximation: any
-    register may be the struct base, so fields are candidates.
-    """
-    widths: dict[int, int] = {}
-    registers: dict[int, set[str]] = {}
-    accesses: dict[int, int] = {}
-    for insn in Disassembler().disassemble(code, addr, mode):
-        width = _access_width(insn.mnemonic)
-        if width == 0:
-            continue
-        for match in _MEM_RE.finditer(insn.op_str):
-            base = match.group(1)
-            if base in ("sp", "pc"):
+        ``sp``/``pc`` bases are ignored. The result is an over-approximation: any
+        register may be the struct base, so fields are candidates.
+        """
+        widths: dict[int, int] = {}
+        registers: dict[int, set[str]] = {}
+        accesses: dict[int, int] = {}
+        for insn in Disassembler().disassemble(code, addr, mode):
+            width = cls._access_width(insn.mnemonic)
+            if width == 0:
                 continue
-            text = match.group(2)
-            offset = int(text, 0) if text is not None else 0
-            widths[offset] = max(widths.get(offset, 0), width)
-            registers.setdefault(offset, set()).add(base)
-            accesses[offset] = accesses.get(offset, 0) + 1
-    return tuple(
-        StructField(
-            offset=offset,
-            width=width,
-            registers=tuple(sorted(registers[offset])),
-            accesses=accesses[offset],
-        )
-        for offset, width in sorted(widths.items())
-    )
-
-
-def render_struct(fields: tuple[StructField, ...], name: str = "candidate") -> str:
-    """Render a C struct skeleton with provisional names and padding."""
-    lines = [f"struct {name} {{"]
-    cursor = 0
-    for field in fields:
-        if field.offset > cursor:
-            lines.append(
-                f"    uint8_t pad_0x{cursor:02x}[0x{field.offset - cursor:x}];"
+            for match in _MEM_RE.finditer(insn.op_str):
+                base = match.group(1)
+                if base in ("sp", "pc"):
+                    continue
+                text = match.group(2)
+                offset = int(text, 0) if text is not None else 0
+                widths[offset] = max(widths.get(offset, 0), width)
+                registers.setdefault(offset, set()).add(base)
+                accesses[offset] = accesses.get(offset, 0) + 1
+        return cls(
+            fields=tuple(
+                StructField(
+                    offset=offset,
+                    width=width,
+                    registers=tuple(sorted(registers[offset])),
+                    accesses=accesses[offset],
+                )
+                for offset, width in sorted(widths.items())
             )
-            cursor = field.offset
-        elif field.offset < cursor:
-            lines.append(
-                f"    // overlapping access at 0x{field.offset:02x} (width {field.width})"
-            )
-            continue
-        kind = _WIDTHS.get(field.width, "uint8_t")
-        registers = ", ".join(field.registers)
-        lines.append(
-            f"    {kind} field_0x{field.offset:02x};"
-            f" // {registers} x{field.accesses}"
         )
-        cursor = field.offset + field.width
-    lines.append("};")
-    return "\n".join(lines)
+
+    @staticmethod
+    def _access_width(mnemonic: str) -> int:
+        if mnemonic in ("ldrb", "strb", "ldrsb", "ldrsbt"):
+            return 1
+        if mnemonic in ("ldrh", "strh", "ldrsh", "ldrsht"):
+            return 2
+        if mnemonic in ("ldrd", "strd"):
+            return 8
+        if mnemonic.startswith("ldr") or mnemonic.startswith("str"):
+            return 4
+        return 0
+
+    def render_c(self, name: str = "candidate") -> str:
+        """Render a C struct skeleton with provisional names and padding."""
+        lines = [f"struct {name} {{"]
+        cursor = 0
+        for field in self.fields:
+            if field.offset > cursor:
+                lines.append(
+                    f"    uint8_t pad_0x{cursor:02x}[0x{field.offset - cursor:x}];"
+                )
+                cursor = field.offset
+            elif field.offset < cursor:
+                lines.append(
+                    f"    // overlapping access at 0x{field.offset:02x}"
+                    f" (width {field.width})"
+                )
+                continue
+            kind = _WIDTHS.get(field.width, "uint8_t")
+            registers = ", ".join(field.registers)
+            lines.append(
+                f"    {kind} field_0x{field.offset:02x};"
+                f" // {registers} x{field.accesses}"
+            )
+            cursor = field.offset + field.width
+        lines.append("};")
+        return "\n".join(lines)
