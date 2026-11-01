@@ -75,6 +75,27 @@ class HardwareSlots:
 
 
 @dataclass(frozen=True, slots=True)
+class ArgCheck:
+    """One argument-contract check."""
+
+    arg: str
+    expected: int | str
+    actual: int
+    ok: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ArgHit:
+    """Arguments captured at a callsite hit."""
+
+    pc: int
+    registers: dict[str, int]
+    stack: tuple[int, ...]
+    checks: tuple[ArgCheck, ...]
+    ok: bool
+
+
+@dataclass(frozen=True, slots=True)
 class Snapshot:
     """A stored block of memory, with its base address."""
 

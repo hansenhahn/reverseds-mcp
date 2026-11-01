@@ -71,3 +71,10 @@ def test_lists_re_model_tools() -> None:
 def test_lists_rom_details_tool() -> None:
     """The full ROM details tool is exposed."""
     assert "rom_details" in asyncio.run(_list_tools())
+
+
+def test_lists_decomp_helpers() -> None:
+    """Onda 2.2 helpers are exposed."""
+    names = asyncio.run(_list_tools())
+    for tool in ("args_on_hit", "field_xref", "field_writers", "struct_candidate"):
+        assert tool in names

@@ -144,6 +144,14 @@ class SymbolTable:
                     break
             return found
 
+    def by_name(self, name: str) -> Symbol | None:
+        """Return the symbol with exactly ``name``, if any."""
+        with self._lock:
+            for symbol in self._symbols:
+                if symbol.name == name:
+                    return symbol
+            return None
+
     def all(self) -> list[Symbol]:
         """All symbols, ordered by address."""
         with self._lock:

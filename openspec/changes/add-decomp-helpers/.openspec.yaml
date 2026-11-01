@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-01
+goal: Validar contratos de args no runtime e inferir campos/offsets de struct a
+  partir do código e de acessos observados.

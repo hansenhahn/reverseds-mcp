@@ -1,9 +1,11 @@
 """MCP tools for RE workflows: watchpoints, snapshots and symbols."""
+from ..application.args import ArgsOnHit
 from ..application.snapshots import SnapshotError
 from ..application.watchpoints import Watchpoints
 from ..domain.addresses import describe_address, parse_address
 from ..domain.symbols import Symbol, SymbolTable
 from ..domain.overlays import OverlayHit
+from ..domain.structs import render_struct, scan_struct_accesses
 from ..infra.control import ControlError
 from ..infra.gdb import DebugError
 from ..infra.ndsrom import NdsRomError
@@ -108,6 +110,176 @@ def find_reader(addr: int, timeout: float = 30.0, condition: str | None = None) 
     return {"hit": {"pc": hit.pc, "pc_hex": f"0x{hit.pc:08x}",
                     "pc_symbol": symbol.name if symbol else None,
                     "registers": hit.registers}}
+
+
+@mcp.tool()
+def args_on_hit(
+    addr: int,
+    condition: str | None = None,
+    count: int = 1,
+    timeout: float = 30.0,
+    stack_words: int = 8,
+    schema: dict[str, int | str] | None = None,
+) -> dict:
+    """Capture and check call arguments at a callsite.
+
+    Arms a breakpoint, resumes, and captures ``r0..r3``, ``sp``, ``lr``, ``cpsr``
+    and stack words on each hit. An optional schema compares values by argument:
+    an integer means exact, and ``ptr``/``nonzero``/``zero`` are assertions.
+
+    Parameters:
+        addr (int): Callsite address.
+        condition (str | None): Optional gdb condition.
+        count (int): Maximum hits to capture (1..32).
+        timeout (float): Timeout per hit, in seconds.
+        stack_words (int): Number of 32-bit words read from ``sp`` (0..64).
+        schema (dict[str, int | str] | None): Expected values by ``r0..r3``,
+            ``sp``, ``lr``, ``cpsr`` or ``stackN``.
+
+    Returns:
+        dict: ``{"count", "hits": [...]}`` or ``{"error", "hint"?}``.
+    """
+    try:
+        hits = ArgsOnHit(bridge.debugger()).collect(
+            addr, condition, count, timeout, stack_words, schema
+        )
+    except DebugError as exc:
+        return debug_error(exc)
+    symbols = bridge.symbols()
+    serialized = []
+    for hit in hits:
+        symbol = symbols.resolve(hit.pc)
+        serialized.append(
+            {
+                "pc": hit.pc,
+                "pc_hex": f"0x{hit.pc:08x}",
+                "pc_symbol": symbol.name if symbol else None,
+                "registers": hit.registers,
+                "stack": list(hit.stack),
+                "checks": [
+                    {
+                        "arg": check.arg,
+                        "expected": check.expected,
+                        "actual": check.actual,
+                        "ok": check.ok,
+                    }
+                    for check in hit.checks
+                ],
+                "ok": hit.ok,
+            }
+        )
+    return {"count": len(serialized), "hits": serialized}
+
+
+@mcp.tool()
+def field_xref(
+    base: int | str,
+    offset: int,
+    kind: str = "write",
+    timeout: float = 30.0,
+    condition: str | None = None,
+) -> dict:
+    """Observe reads/writes to a field ``base + offset`` (runtime watchpoint).
+
+    Parameters:
+        base (int | str): Struct base address or symbol name.
+        offset (int): Field offset.
+        kind (str): ``write`` or ``read``.
+        timeout (float): Maximum wait time in seconds.
+        condition (str | None): Optional gdb condition.
+
+    Returns:
+        dict: ``{"field", "base", "offset", "kind", "hit"}`` or ``{"error", ...}``.
+    """
+    base_symbol = None
+    if isinstance(base, str):
+        symbol = bridge.symbols().by_name(base)
+        if symbol is None:
+            return {"error": f"símbolo não encontrado: {base}"}
+        base_addr = symbol.addr
+        base_symbol = symbol.name
+    else:
+        base_addr = base
+    if kind not in ("write", "read"):
+        return {"error": "kind deve ser 'write' ou 'read'"}
+    field = base_addr + offset
+    try:
+        watchpoints = Watchpoints(bridge.debugger())
+        hit = (
+            watchpoints.find_write(field, timeout, condition)
+            if kind == "write"
+            else watchpoints.find_read(field, timeout, condition)
+        )
+    except DebugError as exc:
+        return debug_error(exc)
+    result = {
+        "field": f"0x{field:08x}",
+        "base": base_addr,
+        "base_symbol": base_symbol,
+        "offset": offset,
+        "kind": kind,
+    }
+    if hit is None:
+        result["hit"] = None
+        return result
+    symbol = bridge.symbols().resolve(hit.pc)
+    result["hit"] = {
+        "pc": hit.pc,
+        "pc_hex": f"0x{hit.pc:08x}",
+        "pc_symbol": symbol.name if symbol else None,
+        "registers": hit.registers,
+    }
+    return result
+
+
+@mcp.tool()
+def field_writers(
+    base: int | str, offset: int, timeout: float = 30.0, condition: str | None = None
+) -> dict:
+    """Convenience: writers of ``base + offset`` (see `field_xref`)."""
+    return field_xref(base, offset, "write", timeout, condition)
+
+
+@mcp.tool()
+def struct_candidate(code: int, size: int = 0x200, mode: str = "arm") -> dict:
+    """Infer a candidate struct from loads/stores in a code range.
+
+    Scans ``[rN, #imm]`` accesses (ignoring ``sp``/``pc``), groups by offset with
+    the maximum width/registers and renders a C skeleton with padding. The result
+    is an over-approximation (any register may be the base).
+
+    Parameters:
+        code (int): Code start address.
+        size (int): Number of bytes to scan (1..16384).
+        mode (str): ``arm`` or ``thumb``.
+
+    Returns:
+        dict: ``{"code", "mode", "size", "fields", "c"}`` or ``{"error", ...}``.
+    """
+    size = max(1, min(size, 0x4000))
+    try:
+        data = bridge.debugger().read_memory(code, size)
+    except DebugError as exc:
+        return debug_error(exc)
+    try:
+        fields = scan_struct_accesses(data, code, mode)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return {
+        "code": code,
+        "mode": mode,
+        "size": len(data),
+        "fields": [
+            {
+                "offset": field.offset,
+                "width": field.width,
+                "registers": list(field.registers),
+                "accesses": field.accesses,
+            }
+            for field in fields
+        ],
+        "c": render_struct(fields),
+    }
 
 
 @mcp.tool()
