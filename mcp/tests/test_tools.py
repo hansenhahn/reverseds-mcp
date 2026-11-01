@@ -78,3 +78,10 @@ def test_lists_decomp_helpers() -> None:
     names = asyncio.run(_list_tools())
     for tool in ("args_on_hit", "field_xref", "field_writers", "struct_candidate"):
         assert tool in names
+
+
+def test_lists_display_helpers() -> None:
+    """Onda 2.3 display↔RAM helpers are exposed."""
+    names = asyncio.run(_list_tools())
+    for tool in ("map_cell", "vram_tile_bytes", "find_tile_in_ram", "dma_source"):
+        assert tool in names
