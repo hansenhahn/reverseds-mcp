@@ -2,8 +2,10 @@
 import os
 
 from ..application.cart_trace import CartTrace, TraceError
-from ..domain.overlays import Overlay
+from ..domain.cartfs import NdsHeader
+from ..domain.overlays import Overlay, OverlayHit
 from ..infra.control import ControlError
+from ..infra.gdb import DebugError
 from ..infra.ndsrom import NdsRomError
 from .app import bridge, error, mcp
 
@@ -36,6 +38,114 @@ def rom_info() -> dict:
         "size": info.size,
         "gamecode": info.gamecode,
         "checksum": info.checksum,
+    }
+
+
+def _header_dict(header: NdsHeader) -> dict:
+    """Serialize the full NDS header."""
+    return {
+        "title": header.title,
+        "gamecode": header.gamecode,
+        "makercode": header.makercode,
+        "unitcode": header.unitcode,
+        "encryption_seed": header.encryption_seed,
+        "device_capacity": header.device_capacity,
+        "region": header.region,
+        "rom_version": header.rom_version,
+        "autostart": header.autostart,
+        "arm9": {
+            "rom_offset": header.arm9_rom_offset,
+            "entry": header.arm9_entry,
+            "ram_address": header.arm9_ram_address,
+            "size": header.arm9_size,
+        },
+        "arm7": {
+            "rom_offset": header.arm7_rom_offset,
+            "entry": header.arm7_entry,
+            "ram_address": header.arm7_ram_address,
+            "size": header.arm7_size,
+        },
+        "fnt": {"offset": header.fnt_offset, "size": header.fnt_size},
+        "fat": {"offset": header.fat_offset, "size": header.fat_size},
+        "arm9_overlay_table": {
+            "offset": header.arm9_overlay_offset,
+            "size": header.arm9_overlay_size,
+        },
+        "arm7_overlay_table": {
+            "offset": header.arm7_overlay_offset,
+            "size": header.arm7_overlay_size,
+        },
+        "icon_offset": header.icon_offset,
+        "secure_area_crc": header.secure_area_crc,
+        "secure_area_delay": header.secure_area_delay,
+        "total_used_size": header.total_used_size,
+        "header_size": header.header_size,
+        "logo_crc": header.logo_crc,
+        "header_crc": header.header_crc,
+    }
+
+
+def _overlay_hit_dict(hit: OverlayHit) -> dict:
+    """Serialize an overlay hit with its offset."""
+    return {**_overlay_dict(hit.overlay), "offset": hit.offset}
+
+
+@mcp.tool()
+def rom_details() -> dict:
+    """Return full details of the ROM loaded in the emulator.
+
+    Reads the full header over the control channel and derives the NitroFS file
+    count and overlay counts. When the debugger is connected, includes the
+    current core, PC and overlay at the PC; otherwise ``runtime`` is null.
+
+    Returns:
+        dict: ``{"loaded", "identity", "header", "derived", "runtime"}`` or
+        ``{"error": ...}``.
+    """
+    try:
+        info = bridge.rom_info()
+        if not info.loaded:
+            return {"loaded": False}
+        cartfs = bridge.cartfs()
+        overlays = bridge.overlays()
+        header = cartfs.header()
+        file_count = cartfs.file_count()
+        arm9_overlays = len(overlays.overlay_list("arm9"))
+        arm7_overlays = len(overlays.overlay_list("arm7"))
+    except (NdsRomError, ControlError) as exc:
+        return _rom_error(exc)
+
+    runtime = None
+    try:
+        debugger = bridge.debugger()
+        core = debugger.core()
+        if core:
+            pc = debugger.read_register("pc")
+            hit = overlays.overlay_for_address(pc, core)
+            runtime = {
+                "core": core,
+                "pc": f"0x{pc:08x}",
+                "overlay": _overlay_hit_dict(hit) if hit else None,
+            }
+    except DebugError:
+        runtime = None
+
+    return {
+        "loaded": True,
+        "identity": {
+            "name": info.name,
+            "path": info.path,
+            "size": info.size,
+            "gamecode": info.gamecode,
+            "checksum": info.checksum,
+        },
+        "header": _header_dict(header),
+        "derived": {
+            "file_count": file_count,
+            "arm9_overlays": arm9_overlays,
+            "arm7_overlays": arm7_overlays,
+        },
+        "runtime": runtime,
     }
 
 

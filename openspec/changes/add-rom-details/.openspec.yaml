@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-01
+goal: Dar proveniência completa da ROM em execução (identidade, header GBATEK,
+  NitroFS/overlays e overlay atual) sem mudar o emulador.

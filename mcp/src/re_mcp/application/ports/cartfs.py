@@ -1,12 +1,23 @@
 """Port for the cartridge filesystem (NitroFS) of the ROM."""
 from typing import Protocol, runtime_checkable
 
-from ...domain.cartfs import FileEntry
+from ...domain.cartfs import FileEntry, NdsHeader
 
 
 @runtime_checkable
 class CartFs(Protocol):
     """Port for the ROM filesystem (NitroFS): lists, maps and reads files."""
+
+    def header(self) -> NdsHeader:
+        """Return the full ROM header.
+
+        Returns:
+            NdsHeader: The parsed header.
+
+        Raises:
+            NdsRomError: If there is no ROM loaded.
+        """
+        ...
 
     def file_count(self) -> int:
         """The number of listed files.

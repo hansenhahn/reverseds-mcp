@@ -66,3 +66,8 @@ def test_lists_re_model_tools() -> None:
     names = asyncio.run(_list_tools())
     for tool in ("symbol_define", "symbol_list", "symbol_load", "symbol_lookup", "decomp_snippet"):
         assert tool in names
+
+
+def test_lists_rom_details_tool() -> None:
+    """The full ROM details tool is exposed."""
+    assert "rom_details" in asyncio.run(_list_tools())

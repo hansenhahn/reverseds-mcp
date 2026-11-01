@@ -172,3 +172,37 @@ def test_channelrom_without_rom(tmp_path: Path) -> None:
     assert rom.info().loaded is False
     with pytest.raises(NdsRomError):
         rom.refresh()
+
+
+def test_parse_full_header() -> None:
+    """The full header parses title, ARM9/ARM7 and CRCs."""
+    data = bytearray(0x200)
+    data[0x00:0x0C] = b"TEST GAME\0\0\0"
+    data[0x0C:0x10] = b"TEST"
+    data[0x10:0x12] = b"01"
+    data[0x12] = 0x02
+    data[0x1D] = 0x80
+    data[0x1E] = 0x01
+    data[0x1F] = 0x04
+    for off, val in (
+        (0x20, 0x4000), (0x24, 0x02000800), (0x28, 0x02000000), (0x2C, 0x1000),
+        (0x30, 0x8000), (0x34, 0x02380000), (0x38, 0x02380000), (0x3C, 0x800),
+        (0x40, 0x10000), (0x44, 0x200), (0x48, 0x10200), (0x4C, 0x40),
+        (0x50, 0x10400), (0x54, 0x20), (0x58, 0), (0x5C, 0),
+        (0x68, 0x12000), (0x80, 0x100000), (0x84, 0x4000),
+    ):
+        struct.pack_into("<I", data, off, val)
+    struct.pack_into("<H", data, 0x6C, 0x1234)
+    struct.pack_into("<H", data, 0x6E, 0x051E)
+    struct.pack_into("<H", data, 0x15C, 0xCF56)
+    struct.pack_into("<H", data, 0x15E, 0xABCD)
+    header = NdsHeader.from_bytes(bytes(data))
+    assert header.title == "TEST GAME"
+    assert (header.gamecode, header.makercode, header.unitcode) == ("TEST", "01", 2)
+    assert (header.region, header.rom_version, header.autostart) == (0x80, 1, 4)
+    assert (header.arm9_rom_offset, header.arm9_entry, header.arm9_size) == (
+        0x4000, 0x02000800, 0x1000,
+    )
+    assert header.fnt_offset == 0x10000
+    assert (header.secure_area_crc, header.secure_area_delay) == (0x1234, 0x051E)
+    assert (header.logo_crc, header.header_crc) == (0xCF56, 0xABCD)
