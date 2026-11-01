@@ -1,7 +1,7 @@
 """Application service: capture and check arguments at a callsite."""
 import struct
 
-from ..domain.addresses import region_for
+from ..domain.addresses import AddressSpace
 from ..domain.debug import ArgCheck, ArgHit
 from .ports import Debugger
 
@@ -11,7 +11,7 @@ _MAX_STACK_WORDS = 64
 
 
 def _is_pointer(value: int) -> bool:
-    region = region_for(value)
+    region = AddressSpace.region_for(value)
     return region is not None and region.name not in {"itcm", "arm9-bios"}
 
 

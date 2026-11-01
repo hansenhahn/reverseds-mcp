@@ -1,12 +1,7 @@
 """Pure address parsing/region tests — no emulator."""
 import pytest
 
-from re_mcp.domain.addresses import (
-    NDS9_REGIONS,
-    describe_address,
-    parse_address,
-    region_for,
-)
+from re_mcp.domain.addresses import NDS9_REGIONS, AddressSpace
 
 
 @pytest.mark.parametrize(
@@ -22,7 +17,7 @@ from re_mcp.domain.addresses import (
 )
 def test_parse_address_accepts_hex_and_decimal(value: object, expected: int) -> None:
     """Hex (prefixed or bare) and decimal text are accepted."""
-    assert parse_address(value) == expected  # type: ignore[arg-type]
+    assert AddressSpace.parse(value) == expected  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
@@ -32,12 +27,12 @@ def test_parse_address_accepts_hex_and_decimal(value: object, expected: int) -> 
 def test_parse_address_rejects_invalid_values(value: object) -> None:
     """Invalid, negative, out-of-range or non-string/int values are rejected."""
     with pytest.raises(ValueError):
-        parse_address(value)  # type: ignore[arg-type]
+        AddressSpace.parse(value)  # type: ignore[arg-type]
 
 
 def test_describe_main_ram_is_aligned_and_mapped() -> None:
     """Main RAM resolves to its region and 4-byte alignment."""
-    info = describe_address(0x020A2D90)
+    info = AddressSpace.describe(0x020A2D90)
     assert info.value_hex == "0x020a2d90"
     assert info.aligned4 is True
     assert info.mapped is True
@@ -46,12 +41,12 @@ def test_describe_main_ram_is_aligned_and_mapped() -> None:
 
 def test_describe_unaligned_address() -> None:
     """A non-multiple-of-4 address is reported as unaligned."""
-    assert describe_address(0x02000001).aligned4 is False
+    assert AddressSpace.describe(0x02000001).aligned4 is False
 
 
 def test_describe_unmapped_address_is_not_an_error() -> None:
     """An address outside the known regions is a valid result with mapped=False."""
-    info = describe_address(0x01000000)
+    info = AddressSpace.describe(0x01000000)
     assert info.mapped is False
     assert info.region is None
 
@@ -69,7 +64,7 @@ def test_describe_unmapped_address_is_not_an_error() -> None:
 )
 def test_region_for_known_ranges(addr: int, region: str) -> None:
     """Known ARM9 windows resolve to their region name."""
-    found = region_for(addr)
+    found = AddressSpace.region_for(addr)
     assert found is not None and found.name == region
 
 

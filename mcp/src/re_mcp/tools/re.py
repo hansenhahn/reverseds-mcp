@@ -2,10 +2,10 @@
 from ..application.args import ArgsOnHit
 from ..application.snapshots import SnapshotError
 from ..application.watchpoints import Watchpoints
-from ..domain.addresses import describe_address, parse_address
+from ..domain.addresses import AddressSpace
 from ..domain.symbols import Symbol, SymbolTable
 from ..domain.overlays import OverlayHit
-from ..domain.structs import render_struct, scan_struct_accesses
+from ..domain.structs import StructCandidate
 from ..infra.control import ControlError
 from ..infra.gdb import DebugError
 from ..infra.ndsrom import NdsRomError
@@ -38,10 +38,10 @@ def addr_valid(value: str | int) -> dict:
         "overlay"}`` or ``{"error", "hint"?}``.
     """
     try:
-        addr = parse_address(value)
+        addr = AddressSpace.parse(value)
     except ValueError as exc:
         return error(exc, "Use hexadecimal (0x...) ou decimal (0..0xFFFFFFFF).")
-    info = describe_address(addr)
+    info = AddressSpace.describe(addr)
     overlay: dict | None = None
     try:
         hit = bridge.overlays().overlay_for_address(addr)
@@ -262,7 +262,7 @@ def struct_candidate(code: int, size: int = 0x200, mode: str = "arm") -> dict:
     except DebugError as exc:
         return debug_error(exc)
     try:
-        fields = scan_struct_accesses(data, code, mode)
+        candidate = StructCandidate.scan(data, code, mode)
     except ValueError as exc:
         return {"error": str(exc)}
     return {
@@ -276,9 +276,9 @@ def struct_candidate(code: int, size: int = 0x200, mode: str = "arm") -> dict:
                 "registers": list(field.registers),
                 "accesses": field.accesses,
             }
-            for field in fields
+            for field in candidate.fields
         ],
-        "c": render_struct(fields),
+        "c": candidate.render_c(),
     }
 
 

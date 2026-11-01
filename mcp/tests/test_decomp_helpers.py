@@ -7,7 +7,7 @@ import pytest
 from re_mcp.application.args import ArgsOnHit
 from re_mcp.application.ports import Debugger
 from re_mcp.domain.debug import ArgHit
-from re_mcp.domain.structs import render_struct, scan_struct_accesses
+from re_mcp.domain.structs import StructCandidate
 from re_mcp.domain.symbols import Symbol, SymbolTable
 from re_mcp.tools import re as re_tools
 
@@ -15,14 +15,15 @@ from re_mcp.tools import re as re_tools
 def test_scan_struct_accesses_and_render() -> None:
     """Loads/stores become candidate fields with widths and padding."""
     code = bytes.fromhex("100091e50420d3e5084085e5bc60c7e1")
-    fields = scan_struct_accesses(code, 0x02000000)
+    candidate = StructCandidate.scan(code, 0x02000000)
+    fields = candidate.fields
     assert [(field.offset, field.width, field.registers) for field in fields] == [
         (0x04, 1, ("r3",)),
         (0x08, 4, ("r5",)),
         (0x0C, 2, ("r7",)),
         (0x10, 4, ("r1",)),
     ]
-    c = render_struct(fields)
+    c = candidate.render_c()
     assert "uint8_t field_0x04;" in c
     assert "uint8_t pad_0x05[0x3];" in c
     assert "uint32_t field_0x08;" in c

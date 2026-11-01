@@ -69,69 +69,75 @@ class AddressInfo:
         return self.region is not None
 
 
-def parse_address(value: int | str) -> int:
-    """Parse an address from an integer or text.
+class AddressSpace:
+    """ARM9 address parsing and region resolution behavior."""
 
-    Text accepts ``0x``-prefixed hex, bare hex (when it contains ``A-F``) or decimal.
-    Underscores are ignored, as in Python literals.
+    regions: tuple[MemoryRegion, ...] = NDS9_REGIONS
 
-    Parameters:
-        value (int | str): The address as an integer or text.
+    @classmethod
+    def parse(cls, value: int | str) -> int:
+        """Parse an address from an integer or text.
 
-    Returns:
-        int: The address (0..0xFFFFFFFF).
+        Text accepts ``0x``-prefixed hex, bare hex (when it contains ``A-F``) or
+        decimal. Underscores are ignored, as in Python literals.
 
-    Raises:
-        ValueError: If the value is invalid or out of range.
-    """
-    if isinstance(value, bool):
-        raise ValueError("endereço inválido: booleano")
-    if isinstance(value, int):
-        addr = value
-    elif isinstance(value, str):
-        text = value.strip().replace("_", "")
-        if not text:
-            raise ValueError("endereço vazio")
-        if text.lower().startswith("0x"):
-            text = text[2:]
-            base = 16
-        elif any(char in "abcdefABCDEF" for char in text):
-            base = 16
+        Parameters:
+            value (int | str): The address as an integer or text.
+
+        Returns:
+            int: The address (0..0xFFFFFFFF).
+
+        Raises:
+            ValueError: If the value is invalid or out of range.
+        """
+        if isinstance(value, bool):
+            raise ValueError("endereço inválido: booleano")
+        if isinstance(value, int):
+            addr = value
+        elif isinstance(value, str):
+            text = value.strip().replace("_", "")
+            if not text:
+                raise ValueError("endereço vazio")
+            if text.lower().startswith("0x"):
+                text = text[2:]
+                base = 16
+            elif any(char in "abcdefABCDEF" for char in text):
+                base = 16
+            else:
+                base = 10
+            try:
+                addr = int(text, base)
+            except ValueError:
+                raise ValueError(f"endereço inválido: {value!r}") from None
         else:
-            base = 10
-        try:
-            addr = int(text, base)
-        except ValueError:
-            raise ValueError(f"endereço inválido: {value!r}") from None
-    else:
-        raise ValueError(f"endereço inválido: {value!r}")
-    if not 0 <= addr <= 0xFFFFFFFF:
-        raise ValueError(f"endereço fora de 0..0xFFFFFFFF: {value!r}")
-    return addr
+            raise ValueError(f"endereço inválido: {value!r}")
+        if not 0 <= addr <= 0xFFFFFFFF:
+            raise ValueError(f"endereço fora de 0..0xFFFFFFFF: {value!r}")
+        return addr
 
+    @classmethod
+    def region_for(cls, addr: int) -> MemoryRegion | None:
+        """Return the ARM9 region containing ``addr``, if any.
 
-def region_for(addr: int) -> MemoryRegion | None:
-    """Return the ARM9 region containing ``addr``, if any.
+        Parameters:
+            addr (int): The address.
 
-    Parameters:
-        addr (int): The address.
+        Returns:
+            MemoryRegion | None: The region, or None when it is not mapped.
+        """
+        for region in cls.regions:
+            if region.covers(addr):
+                return region
+        return None
 
-    Returns:
-        MemoryRegion | None: The region, or None when it is not mapped.
-    """
-    for region in NDS9_REGIONS:
-        if region.covers(addr):
-            return region
-    return None
+    @classmethod
+    def describe(cls, addr: int) -> AddressInfo:
+        """Normalize ``addr`` and resolve its ARM9 region.
 
+        Parameters:
+            addr (int): The address (already parsed).
 
-def describe_address(addr: int) -> AddressInfo:
-    """Normalize ``addr`` and resolve its ARM9 region.
-
-    Parameters:
-        addr (int): The address (already parsed).
-
-    Returns:
-        AddressInfo: The address with its region (or None).
-    """
-    return AddressInfo(addr, region_for(addr))
+        Returns:
+            AddressInfo: The address with its region (or None).
+        """
+        return AddressInfo(addr, cls.region_for(addr))

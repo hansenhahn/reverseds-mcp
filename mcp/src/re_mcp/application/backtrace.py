@@ -1,5 +1,5 @@
 """Application service: backtrace with a stack-scan fallback."""
-from ..domain.backtrace import scan_return_addresses
+from ..domain.backtrace import StackScanner
 from ..domain.debug import StackFrame
 from ..domain.disasm import Disassembler
 from .ports import Debugger
@@ -58,13 +58,12 @@ class Backtrace:
             stack = self._debugger.read_memory(sp, self._depth)
         except RuntimeError:
             return frames
-        candidates = scan_return_addresses(
-            stack,
+        scanner = StackScanner(
             exclude={pc, *(frame.pc for frame in frames)},
             exclude_range=(sp, sp + len(stack)),
             limit=self._limit,
         )
-        for addr in candidates:
+        for addr in scanner.scan(stack):
             if not self._is_return_address(addr):
                 continue
             frames.append(
