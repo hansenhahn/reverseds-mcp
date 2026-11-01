@@ -50,3 +50,10 @@ def test_invalid_json_raises() -> None:
     import pytest
     with pytest.raises(ValueError):
         SymbolTable.from_json("{not json")
+
+
+def test_by_name() -> None:
+    """`by_name` finds an exact symbol name."""
+    table = SymbolTable([Symbol(0x100, "foo"), Symbol(0x200, "bar")])
+    assert table.by_name("bar") == Symbol(0x200, "bar")
+    assert table.by_name("nope") is None
