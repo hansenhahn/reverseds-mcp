@@ -10,7 +10,7 @@ from ..domain.cartfs import FileEntry, NdsFs, NdsHeader, RomInfo
 from ..domain.overlays import Overlay, OverlayHit, OverlayTable
 from ..application.ports import CartFs, ControlChannel, Overlays
 
-_HEADER_SIZE = 0x60
+_HEADER_SIZE = 0x200
 _CORES = ("arm9", "arm7")
 _READ_CHUNK = 4 * 1024 * 1024
 
@@ -119,6 +119,13 @@ class ChannelRom(CartFs, Overlays):
                     raise NdsRomError("nenhuma ROM carregada no emulador")
             assert self._fs is not None
             return self._fs, self._overlays
+
+    def header(self) -> NdsHeader:
+        """Return the full ROM header from the loaded ROM."""
+        info = self.info()
+        if not info.loaded:
+            raise NdsRomError("nenhuma ROM carregada no emulador")
+        return NdsHeader.from_bytes(self._read(0, _HEADER_SIZE))
 
     def file_count(self) -> int:
         fs, _ = self._snapshot()

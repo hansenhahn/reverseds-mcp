@@ -7,7 +7,12 @@ Parses the ROM header and the FNT/FAT tables (format per `ndstool`,
 import struct
 from dataclasses import dataclass
 
-_HEADER_SIZE = 0x60
+_MIN_HEADER_SIZE = 0x60
+_HEADER_SIZE = 0x200
+
+
+def _u8(data: bytes, offset: int) -> int:
+    return data[offset]
 
 
 def _u16(data: bytes, offset: int) -> int:
@@ -20,9 +25,25 @@ def _u32(data: bytes, offset: int) -> int:
 
 @dataclass(frozen=True, slots=True)
 class NdsHeader:
-    """ROM header: where the FNT/FAT and the overlay tables live."""
+    """NDS ROM header (full 0x200 bytes, per GBATEK "DS Cartridge Header")."""
 
+    title: str
     gamecode: str
+    makercode: str
+    unitcode: int
+    encryption_seed: int
+    device_capacity: int
+    region: int
+    rom_version: int
+    autostart: int
+    arm9_rom_offset: int
+    arm9_entry: int
+    arm9_ram_address: int
+    arm9_size: int
+    arm7_rom_offset: int
+    arm7_entry: int
+    arm7_ram_address: int
+    arm7_size: int
     fnt_offset: int
     fnt_size: int
     fat_offset: int
@@ -31,13 +52,21 @@ class NdsHeader:
     arm9_overlay_size: int
     arm7_overlay_offset: int
     arm7_overlay_size: int
+    icon_offset: int
+    secure_area_crc: int
+    secure_area_delay: int
+    total_used_size: int
+    header_size: int
+    logo_crc: int
+    header_crc: int
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "NdsHeader":
-        """Parse the header from the first bytes of the ROM.
+        """Parse the full header from the first bytes of the ROM.
 
         Parameters:
-            data (bytes): The first bytes of the ROM (at least 0x60).
+            data (bytes): The first bytes of the ROM (at least 0x60; the full
+                header is 0x200, missing bytes are treated as zero).
 
         Returns:
             NdsHeader: The parsed header.
@@ -45,10 +74,29 @@ class NdsHeader:
         Raises:
             ValueError: If `data` is shorter than the minimum header.
         """
-        if len(data) < _HEADER_SIZE:
+        if len(data) < _MIN_HEADER_SIZE:
             raise ValueError("header da ROM truncado")
+        if len(data) < _HEADER_SIZE:
+            data = data + b"\x00" * (_HEADER_SIZE - len(data))
+        title = data[0x00:0x0C].split(b"\x00", 1)[0].decode("ascii", "replace")
         return cls(
+            title=title,
             gamecode=data[0x0C:0x10].decode("ascii", "replace"),
+            makercode=data[0x10:0x12].decode("ascii", "replace"),
+            unitcode=_u8(data, 0x12),
+            encryption_seed=_u8(data, 0x13),
+            device_capacity=_u8(data, 0x14),
+            region=_u8(data, 0x1D),
+            rom_version=_u8(data, 0x1E),
+            autostart=_u8(data, 0x1F),
+            arm9_rom_offset=_u32(data, 0x20),
+            arm9_entry=_u32(data, 0x24),
+            arm9_ram_address=_u32(data, 0x28),
+            arm9_size=_u32(data, 0x2C),
+            arm7_rom_offset=_u32(data, 0x30),
+            arm7_entry=_u32(data, 0x34),
+            arm7_ram_address=_u32(data, 0x38),
+            arm7_size=_u32(data, 0x3C),
             fnt_offset=_u32(data, 0x40),
             fnt_size=_u32(data, 0x44),
             fat_offset=_u32(data, 0x48),
@@ -57,6 +105,13 @@ class NdsHeader:
             arm9_overlay_size=_u32(data, 0x54),
             arm7_overlay_offset=_u32(data, 0x58),
             arm7_overlay_size=_u32(data, 0x5C),
+            icon_offset=_u32(data, 0x68),
+            secure_area_crc=_u16(data, 0x6C),
+            secure_area_delay=_u16(data, 0x6E),
+            total_used_size=_u32(data, 0x80),
+            header_size=_u32(data, 0x84),
+            logo_crc=_u16(data, 0x15C),
+            header_crc=_u16(data, 0x15E),
         )
 
 
@@ -70,6 +125,17 @@ class RomInfo:
     size: int
     gamecode: str
     checksum: int
+
+
+@dataclass(frozen=True, slots=True)
+class RomDetails:
+    """Identity + full header + derived counts of the loaded ROM."""
+
+    info: RomInfo
+    header: NdsHeader
+    file_count: int
+    arm9_overlays: int
+    arm7_overlays: int
 
 
 @dataclass(frozen=True, slots=True)
