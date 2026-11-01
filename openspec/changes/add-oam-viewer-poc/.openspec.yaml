@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-10-30
+goal: Ter a primeira janela de copiloto (OAM) e documentar exatamente o que o
+  POC cobre, o que não cobre e o que vem depois.
