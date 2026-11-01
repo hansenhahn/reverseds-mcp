@@ -1,10 +1,14 @@
 """MCP tools for RE workflows: watchpoints, snapshots and symbols."""
 from ..application.args import ArgsOnHit
+from ..application.contract import ContractChecks
 from ..application.display import DisplayReader
 from ..application.dma_trace import DmaTrace
+from ..application.patches import PatchComparer
 from ..application.snapshots import SnapshotError
 from ..application.watchpoints import Watchpoints
 from ..domain.addresses import AddressSpace
+from ..domain.contract import Contract
+from ..domain.patch import Patch
 from ..domain.symbols import Symbol, SymbolTable
 from ..domain.overlays import OverlayHit
 from ..domain.structs import StructCandidate
@@ -164,6 +168,7 @@ def args_on_hit(
                         "expected": check.expected,
                         "actual": check.actual,
                         "ok": check.ok,
+                        "checked": check.checked,
                     }
                     for check in hit.checks
                 ],
@@ -171,6 +176,133 @@ def args_on_hit(
             }
         )
     return {"count": len(serialized), "hits": serialized}
+
+
+@mcp.tool()
+def contract_check(
+    addr: int,
+    schema: dict[str, int | str],
+    ret_schema: dict[str, int | str] | None = None,
+    condition: str | None = None,
+    count: int = 1,
+    timeout: float = 30.0,
+    stack_words: int = 8,
+) -> dict:
+    """Validate a function contract against runtime values.
+
+    Captures ``r0..r3``/stack at ``addr`` and compares with ``schema``. When
+    ``ret_schema`` is given, also stops at the return address (``lr``) and checks
+    the return registers (first return per invocation).
+
+    Parameters:
+        addr (int): Callsite address.
+        schema (dict[str, int | str]): Expected arguments (name → value/token).
+        ret_schema (dict[str, int | str] | None): Expected returns.
+        condition (str | None): Optional gdb condition.
+        count (int): Maximum invocations (1..32).
+        timeout (float): Timeout per hit/return, in seconds.
+        stack_words (int): Number of 32-bit words read from ``sp`` (0..64).
+
+    Returns:
+        dict: ``{"callsite", "ok", "count", "hits", "divergences"}`` or
+        ``{"error", "hint"?}``.
+    """
+    try:
+        contract = Contract.from_schema(schema, ret_schema)
+        hits = ContractChecks(bridge.debugger()).run(
+            addr, contract, condition, count, timeout, stack_words
+        )
+    except DebugError as exc:
+        return debug_error(exc)
+    symbols = bridge.symbols()
+    symbol = symbols.resolve(addr)
+    serialized = []
+    divergences: list[dict] = []
+    for hit in hits:
+        entry = hit.entry
+        returned = hit.returned
+        serialized.append(
+            {
+                "pc": entry.pc,
+                "pc_hex": f"0x{entry.pc:08x}",
+                "registers": entry.registers,
+                "stack": list(entry.stack),
+                "checks": [
+                    {
+                        "arg": check.arg,
+                        "expected": check.expected,
+                        "actual": check.actual,
+                        "ok": check.ok,
+                        "checked": check.checked,
+                    }
+                    for check in entry.checks
+                ],
+                "return": (
+                    None
+                    if returned is None
+                    else {
+                        "registers": returned.registers,
+                        "checks": [
+                            {
+                                "arg": check.arg,
+                                "expected": check.expected,
+                                "actual": check.actual,
+                                "ok": check.ok,
+                                "checked": check.checked,
+                            }
+                            for check in returned.checks
+                        ],
+                        "ok": returned.ok,
+                    }
+                ),
+                "ok": hit.ok,
+            }
+        )
+        for check in entry.checks:
+            if not check.ok:
+                divergences.append(
+                    {
+                        "kind": "arg",
+                        "pc": f"0x{entry.pc:08x}",
+                        "arg": check.arg,
+                        "expected": check.expected,
+                        "actual": check.actual,
+                        "checked": check.checked,
+                    }
+                )
+        if hit.returns_expected:
+            if returned is None:
+                divergences.append(
+                    {
+                        "kind": "return",
+                        "pc": f"0x{entry.pc:08x}",
+                        "missing": True,
+                    }
+                )
+            else:
+                for check in returned.checks:
+                    if not check.ok:
+                        divergences.append(
+                            {
+                                "kind": "return",
+                                "pc": f"0x{entry.pc:08x}",
+                                "arg": check.arg,
+                                "expected": check.expected,
+                                "actual": check.actual,
+                                "checked": check.checked,
+                            }
+                        )
+    return {
+        "callsite": addr,
+        "callsite_hex": f"0x{addr:08x}",
+        "callsite_symbol": symbol.name if symbol else None,
+        "schema": schema,
+        "ret_schema": ret_schema,
+        "count": len(serialized),
+        "ok": bool(serialized) and all(hit.ok for hit in hits),
+        "hits": serialized,
+        "divergences": divergences,
+    }
 
 
 @mcp.tool()
@@ -281,6 +413,54 @@ def struct_candidate(code: int, size: int = 0x200, mode: str = "arm") -> dict:
             for field in candidate.fields
         ],
         "c": candidate.render_c(),
+    }
+
+
+@mcp.tool()
+def diff_patch(asm_patch: list[dict], c_equiv: list[dict]) -> dict:
+    """Compare the bytes produced by an ASM patch and its C equivalent.
+
+    Each patch is a list of ``{addr, bytes}`` writes (``bytes`` in hex). The tool
+    reads the current memory over the touched ranges, applies both patches to a
+    copy and reports every differing byte. It does not execute either patch.
+
+    Parameters:
+        asm_patch (list[dict]): ASM patch writes.
+        c_equiv (list[dict]): Compiled C-equivalent writes.
+
+    Returns:
+        dict: ``{"mode", "iguais", "count", "diffs", "regions"}`` or ``{"error"}``.
+    """
+    try:
+        asm, c_equiv_patch, diff = PatchComparer(bridge.debugger()).compare(
+            asm_patch, c_equiv
+        )
+    except ValueError as exc:
+        return {"error": str(exc)}
+    except DebugError as exc:
+        return debug_error(exc)
+    limit = 2048
+    shown = diff.diffs[:limit]
+    return {
+        "mode": "static",
+        "iguais": diff.iguais,
+        "count": len(diff.diffs),
+        "truncated": len(diff.diffs) > limit,
+        "diffs": [
+            {
+                "addr": f"0x{item.addr:08x}",
+                "asm": item.asm,
+                "c": item.c,
+            }
+            for item in shown
+        ],
+        "regions": [
+            {
+                "start": f"0x{start:08x}",
+                "end": f"0x{end:08x}",
+            }
+            for start, end in Patch.merged_regions(asm, c_equiv_patch)
+        ],
     }
 
 
