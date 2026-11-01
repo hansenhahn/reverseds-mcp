@@ -1,5 +1,7 @@
 """MCP tools for RE workflows: watchpoints, snapshots and symbols."""
 from ..application.args import ArgsOnHit
+from ..application.display import DisplayReader
+from ..application.dma_trace import DmaTrace
 from ..application.snapshots import SnapshotError
 from ..application.watchpoints import Watchpoints
 from ..domain.addresses import describe_address, parse_address
@@ -280,6 +282,170 @@ def struct_candidate(code: int, size: int = 0x200, mode: str = "arm") -> dict:
         ],
         "c": render_struct(fields),
     }
+
+
+@mcp.tool()
+def map_cell(engine: str = "A", bg: int = 0, x: int = 0, y: int = 0) -> dict:
+    """Resolve a BG cell to its map entry, tile index and tile address.
+
+    Parameters:
+        engine (str): ``A`` or ``B``.
+        bg (int): BG layer 0..3.
+        x (int): X pixel in the BG map.
+        y (int): Y pixel in the BG map.
+
+    Returns:
+        dict: Cell details or ``{"error", "hint"?}``.
+    """
+    try:
+        cell = DisplayReader(bridge.debugger(), bridge.io_map()).map_cell(
+            engine, bg, x, y
+        )
+    except DebugError as exc:
+        return debug_error(exc)
+    except ValueError as exc:
+        return error(exc, "Confira engine/BG e coordenadas; só text/affine são suportados.")
+    return {
+        "engine": cell.engine,
+        "bg": cell.bg,
+        "kind": cell.kind,
+        "x": cell.x,
+        "y": cell.y,
+        "cell": [cell.cell_x, cell.cell_y],
+        "entry_addr": f"0x{cell.entry_addr:08x}",
+        "entry": f"0x{cell.entry:04x}",
+        "tile_index": cell.tile_index,
+        "tile_addr": f"0x{cell.tile_addr:08x}",
+        "palette": cell.palette,
+        "bpp": cell.bpp,
+        "flip_h": cell.flip_h,
+        "flip_v": cell.flip_v,
+        "char_base": f"0x{cell.char_base:08x}",
+        "screen_base": f"0x{cell.screen_base:08x}",
+        "map_size": [cell.map_width, cell.map_height],
+    }
+
+
+@mcp.tool()
+def vram_tile_bytes(
+    engine: str = "A",
+    tile_index: int = 0,
+    layer: str = "bg",
+    bg: int = 0,
+    bpp: int | None = None,
+) -> dict:
+    """Read the bytes of a BG or OBJ tile (4bpp/8bpp).
+
+    Parameters:
+        engine (str): ``A`` or ``B``.
+        tile_index (int): Tile number.
+        layer (str): ``bg`` or ``obj``.
+        bg (int): BG layer (for ``layer="bg"``).
+        bpp (int | None): OBJ color depth (4/8; default 4).
+
+    Returns:
+        dict: ``{"addr", "bpp", "size", "hex"}`` or ``{"error", ...}``.
+    """
+    try:
+        addr, depth, data = DisplayReader(
+            bridge.debugger(), bridge.io_map()
+        ).tile_bytes(engine, tile_index, layer, bg, bpp)
+    except DebugError as exc:
+        return debug_error(exc)
+    except ValueError as exc:
+        return error(exc)
+    return {
+        "addr": f"0x{addr:08x}",
+        "bpp": depth,
+        "size": len(data),
+        "hex": data.hex(),
+    }
+
+
+@mcp.tool()
+def find_tile_in_ram(
+    engine: str = "A",
+    tile_index: int = 0,
+    layer: str = "bg",
+    bg: int = 0,
+    bpp: int | None = None,
+    ram_addr: int = 0x02000000,
+    ram_size: int = 0x400000,
+) -> dict:
+    """Find the bytes of a VRAM tile inside RAM.
+
+    Parameters:
+        engine (str): ``A`` or ``B``.
+        tile_index (int): Tile number.
+        layer (str): ``bg`` or ``obj``.
+        bg (int): BG layer (for ``layer="bg"``).
+        bpp (int | None): OBJ color depth (4/8; default 4).
+        ram_addr (int): RAM start to search.
+        ram_size (int): Bytes to search (max 4 MiB).
+
+    Returns:
+        dict: ``{"tile_addr", "bpp", "count", "addresses", "ram"}`` or ``{"error", ...}``.
+    """
+    try:
+        tile_addr, depth, addresses = DisplayReader(
+            bridge.debugger(), bridge.io_map()
+        ).find_tile_in_ram(engine, tile_index, layer, bg, bpp, ram_addr, ram_size)
+    except DebugError as exc:
+        return debug_error(exc)
+    except ValueError as exc:
+        return error(exc)
+    return {
+        "tile_addr": f"0x{tile_addr:08x}",
+        "bpp": depth,
+        "count": len(addresses),
+        "addresses": [f"0x{addr:08x}" for addr in addresses],
+        "ram": {"addr": f"0x{ram_addr:08x}", "size": ram_size},
+    }
+
+
+@mcp.tool()
+def dma_source(
+    vram_addr: int, seconds: float = 2.0, batch: int = 256, timeout_ms: int = 100
+) -> dict:
+    """Collect DMA transfers that wrote a VRAM address in a time window.
+
+    Parameters:
+        vram_addr (int): Destination VRAM address.
+        seconds (float): Collection duration.
+        batch (int): Events per batch.
+        timeout_ms (int): Batch timeout.
+
+    Returns:
+        dict: ``{"vram_addr", "count", "hits": [...]}`` or ``{"error", ...}``.
+    """
+    try:
+        channel = bridge.control()
+    except ControlError as exc:
+        return error(
+            exc, "Verifique se o melonDS está rodando com o canal de controle habilitado."
+        )
+    try:
+        transfers = DmaTrace(channel).find_destination(
+            vram_addr, seconds, batch, timeout_ms
+        )
+    except ControlError as exc:
+        return error(exc)
+    symbols = bridge.symbols()
+    hits = []
+    for transfer in transfers:
+        symbol = symbols.resolve(transfer.pc)
+        hits.append(
+            {
+                "channel": transfer.channel,
+                "cpu": "arm9" if transfer.cpu == 0 else "arm7",
+                "src": f"0x{transfer.source.address:08x}",
+                "dst": f"0x{transfer.destination.address:08x}",
+                "length": transfer.length,
+                "pc": f"0x{transfer.pc:08x}",
+                "pc_symbol": symbol.name if symbol else None,
+            }
+        )
+    return {"vram_addr": f"0x{vram_addr:08x}", "count": len(hits), "hits": hits}
 
 
 @mcp.tool()

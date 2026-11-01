@@ -39,6 +39,32 @@ class DmaTrace:
         """
         return self._channel.call("dma.trace.stop")
 
+    def find_destination(
+        self, addr: int, seconds: float, batch: int = 256, timeout_ms: int = 100
+    ) -> list[DmaTransfer]:
+        """Collect transfers that wrote the VRAM address ``addr``."""
+        self.start(batch, timeout_ms)
+        try:
+            transfers = self.collect(seconds)
+        finally:
+            self.stop()
+        hits: list[DmaTransfer] = []
+        for transfer in transfers:
+            unit = 4 if next(
+                field for field in transfer.control.fields if field.name == "transfer_32bit"
+            ).value else 2
+            dst = transfer.destination.address
+            control = transfer.destination.control
+            if control.startswith("dec"):
+                low, high = dst - transfer.length + unit, dst + unit
+            elif control.startswith("fixed"):
+                low, high = dst, dst + unit
+            else:
+                low, high = dst, dst + transfer.length
+            if low <= addr < high:
+                hits.append(transfer)
+        return hits
+
     def collect(self, seconds: float) -> list[DmaTransfer]:
         """Collect the transfers received (``event.dma`` batches) for ``seconds``.
 
