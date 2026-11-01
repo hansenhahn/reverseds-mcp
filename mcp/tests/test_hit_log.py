@@ -1,6 +1,7 @@
 """Hit-log and cold-reset MCP tools (fake control channel)."""
 import pytest
 
+from re_mcp.domain.symbols import Symbol, SymbolTable
 from re_mcp.tools import control as control_tools
 from re_mcp.tools import debug as debug_tools
 
@@ -37,6 +38,13 @@ def test_hit_log_start_stop_clear(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
 
 
+class FakeHitBridge:
+    """Bridge with one symbol for the hit PC."""
+
+    def symbols(self) -> SymbolTable:
+        return SymbolTable([Symbol(0x02001100, "foo")])
+
+
 def test_hit_log_read_formats_and_clears(monkeypatch: pytest.MonkeyPatch) -> None:
     """`hit_log_read` formats addresses and clears after a successful read."""
     calls: list[str] = []
@@ -54,11 +62,13 @@ def test_hit_log_read_formats_and_clears(monkeypatch: pytest.MonkeyPatch) -> Non
         return {"ok": True}
 
     monkeypatch.setattr(debug_tools, "control_call", fake)
+    monkeypatch.setattr(debug_tools, "bridge", FakeHitBridge())
     out = debug_tools.hit_log_read("arm9", clear=True)
     assert out == {
         "count": 1,
         "dropped": 2,
-        "hits": [{"pc": "0x02001100", "addr": "0x06000000", "kind": "write"}],
+        "hits": [{"pc": "0x02001100", "addr": "0x06000000", "kind": "write",
+                  "pc_symbol": "foo"}],
     }
     assert calls == ["gdb.hits.read", "gdb.hits.clear"]
 

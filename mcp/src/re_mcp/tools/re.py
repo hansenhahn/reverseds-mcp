@@ -2,8 +2,8 @@
 from ..application.snapshots import SnapshotError
 from ..application.watchpoints import Watchpoints
 from ..domain.addresses import describe_address, parse_address
+from ..domain.symbols import Symbol, SymbolTable
 from ..domain.overlays import OverlayHit
-from ..domain.symbols import SymbolTable
 from ..infra.control import ControlError
 from ..infra.gdb import DebugError
 from ..infra.ndsrom import NdsRomError
@@ -47,6 +47,7 @@ def addr_valid(value: str | int) -> dict:
         hit = None
     if hit is not None:
         overlay = _overlay_dict(hit)
+    symbol = bridge.symbols().resolve(addr)
     return {
         "value_dec": info.value,
         "value_hex": info.value_hex,
@@ -54,6 +55,7 @@ def addr_valid(value: str | int) -> dict:
         "mapped": info.mapped,
         "region": info.region.name if info.region else None,
         "overlay": overlay,
+        "symbol": symbol.name if symbol else None,
     }
 
 
@@ -77,7 +79,10 @@ def find_writer(addr: int, timeout: float = 30.0, condition: str | None = None) 
         return debug_error(exc)
     if hit is None:
         return {"hit": None}
-    return {"hit": {"pc": hit.pc, "pc_hex": f"0x{hit.pc:08x}", "registers": hit.registers}}
+    symbol = bridge.symbols().resolve(hit.pc)
+    return {"hit": {"pc": hit.pc, "pc_hex": f"0x{hit.pc:08x}",
+                    "pc_symbol": symbol.name if symbol else None,
+                    "registers": hit.registers}}
 
 
 @mcp.tool()
@@ -99,7 +104,10 @@ def find_reader(addr: int, timeout: float = 30.0, condition: str | None = None) 
         return debug_error(exc)
     if hit is None:
         return {"hit": None}
-    return {"hit": {"pc": hit.pc, "pc_hex": f"0x{hit.pc:08x}", "registers": hit.registers}}
+    symbol = bridge.symbols().resolve(hit.pc)
+    return {"hit": {"pc": hit.pc, "pc_hex": f"0x{hit.pc:08x}",
+                    "pc_symbol": symbol.name if symbol else None,
+                    "registers": hit.registers}}
 
 
 @mcp.tool()
@@ -142,22 +150,86 @@ def state_diff(name: str) -> dict:
 
 
 @mcp.tool()
-def symbol_load(path: str) -> dict:
-    """Load a symbol map (`.map`) to resolve addresses.
+def symbol_define(
+    addr: int,
+    name: str,
+    kind: str = "function",
+    comment: str | None = None,
+    overlay: int | None = None,
+) -> dict:
+    """Define a persistent symbol/alias for an address.
+
+    Parameters:
+        addr (int): Address.
+        name (str): Symbol name.
+        kind (str): ``function``, ``label``, ``data``, ``struct`` or a free-form kind.
+        comment (str | None): Optional note.
+        overlay (int | None): Optional overlay id (metadata; resolution is by address).
+
+    Returns:
+        dict: ``{"ok": true, "addr", "name", "kind", "count", "path"}`` or ``{"error": ...}``.
+    """
+    path = bridge.add_symbol(Symbol(addr, name, kind, comment, overlay))
+    return {
+        "ok": True,
+        "addr": f"0x{addr:08x}",
+        "name": name,
+        "kind": kind,
+        "count": len(bridge.symbols()),
+        "path": path,
+    }
+
+
+@mcp.tool()
+def symbol_list(kind: str | None = None) -> dict:
+    """List persistent symbols, optionally filtered by kind.
+
+    Parameters:
+        kind (str | None): Optional kind filter.
+
+    Returns:
+        dict: ``{"count": N, "symbols": [...]}``.
+    """
+    symbols = bridge.symbols().all()
+    if kind:
+        symbols = [symbol for symbol in symbols if symbol.kind == kind]
+    return {
+        "count": len(symbols),
+        "symbols": [
+            {
+                "addr": f"0x{symbol.addr:08x}",
+                "name": symbol.name,
+                "kind": symbol.kind,
+                "comment": symbol.comment,
+                "overlay": symbol.overlay,
+            }
+            for symbol in symbols
+        ],
+    }
+
+
+@mcp.tool()
+def symbol_load(path: str, merge: bool = True) -> dict:
+    """Load a symbol map (`.map`), merging with the persistent table by default.
 
     Parameters:
         path (str): Path to the `.map` file (lines ``address name``).
+        merge (bool): Merge into the current table (default) or replace it.
 
     Returns:
-        dict: ``{"ok": true, "count": N}`` or ``{"error": ...}``.
+        dict: ``{"ok": true, "count": N, "path": ...}`` or ``{"error": ...}``.
     """
     try:
         with open(path, encoding="utf-8") as handle:
             table = SymbolTable.from_map(handle.read())
     except OSError as exc:
         return {"error": str(exc)}
-    bridge.set_symbols(table)
-    return {"ok": True, "count": len(table)}
+    if merge:
+        bridge.symbols().merge(table)
+    else:
+        bridge.set_symbols(table)
+    out_path = bridge.save_symbols()
+    return {"ok": True, "count": len(bridge.symbols()), "path": out_path}
 
 
 @mcp.tool()
@@ -168,9 +240,41 @@ def symbol_lookup(addr: int) -> dict:
         addr (int): Address to look up.
 
     Returns:
-        dict: ``{"name": ..., "addr": ...}`` or ``{"error": ...}``.
+        dict: ``{"name", "addr", "addr_hex", "kind", "comment", "overlay"}`` or
+        ``{"error": ...}``.
     """
     symbol = bridge.symbols().resolve(addr)
     if symbol is None:
         return {"error": "nenhum símbolo contém esse endereço"}
-    return {"name": symbol.name, "addr": symbol.addr, "addr_hex": f"0x{symbol.addr:08x}"}
+    return {
+        "name": symbol.name,
+        "addr": symbol.addr,
+        "addr_hex": f"0x{symbol.addr:08x}",
+        "kind": symbol.kind,
+        "comment": symbol.comment,
+        "overlay": symbol.overlay,
+    }
+
+
+@mcp.tool()
+def decomp_snippet(addr: int, c: str | None = None, asm: str | None = None) -> dict:
+    """Register or query a decomp snippet (C + ASM) by address.
+
+    Parameters:
+        addr (int): Address.
+        c (str | None): C text to store (None keeps the current value).
+        asm (str | None): ASM text to store (None keeps the current value).
+
+    Returns:
+        dict: ``{"addr", "c", "asm"}`` or ``{"error", "hint"?}``.
+    """
+    if c is None and asm is None:
+        snippet = bridge.decomp().get(addr)
+        if snippet is None:
+            return {
+                "error": "nenhum snippet nesse endereço",
+                "hint": "Passe c/asm para registrar.",
+            }
+        return {"addr": snippet.addr, "c": snippet.c, "asm": snippet.asm}
+    snippet = bridge.decomp().put(addr, c, asm)
+    return {"ok": True, "addr": snippet.addr, "c": snippet.c, "asm": snippet.asm}
