@@ -2,6 +2,7 @@
 import pytest
 
 from re_mcp.domain.debug import Breakpoint
+from re_mcp.domain.symbols import SymbolTable
 from re_mcp.domain.overlays import Overlay, OverlayHit
 from re_mcp.infra.ndsrom import NdsRomError
 from re_mcp.tools import debug as debug_tools
@@ -65,6 +66,9 @@ class FakeBridge:
         if self._rom_error:
             raise NdsRomError("nenhuma ROM carregada no emulador")
         return self._overlays
+
+    def symbols(self) -> SymbolTable:
+        return SymbolTable([])
 
 
 def test_debug_slots_tool(monkeypatch: pytest.MonkeyPatch) -> None:

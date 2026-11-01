@@ -59,3 +59,10 @@ def test_lists_causal_runtime_tools() -> None:
     names = asyncio.run(_list_tools())
     for tool in ("emu_reset", "hit_log_start", "hit_log_stop", "hit_log_read", "hit_log_clear"):
         assert tool in names
+
+
+def test_lists_re_model_tools() -> None:
+    """Symbols/aliases and decomp snippets are exposed."""
+    names = asyncio.run(_list_tools())
+    for tool in ("symbol_define", "symbol_list", "symbol_load", "symbol_lookup", "decomp_snippet"):
+        assert tool in names

@@ -1,5 +1,6 @@
 """MCP tools for debugging (gdb): memory, registers, breakpoints and execution."""
 import json
+import re
 
 from ..application.backtrace import Backtrace
 from ..application.watchpoints import Watchpoints
@@ -185,20 +186,30 @@ def disassemble(addr: int, count: int = 16, mode: str = "arm") -> dict:
         instructions = Disassembler().disassemble(data, addr, mode, count)
     except ValueError as exc:
         return {"error": str(exc)}
-    return {
-        "addr": addr,
-        "mode": mode,
-        "instructions": [
+    symbols = bridge.symbols()
+    annotated = []
+    for item in instructions:
+        symbol = symbols.resolve(item.address)
+        target_symbol = None
+        if item.mnemonic.startswith("b") and not item.mnemonic.startswith(
+            ("bic", "bfi", "bfc", "bkpt")
+        ):
+            match = re.search(r"0x[0-9a-fA-F]+", item.op_str)
+            if match is not None:
+                target = symbols.resolve(int(match.group(0), 16))
+                target_symbol = target.name if target else None
+        annotated.append(
             {
                 "address": f"0x{item.address:08x}",
                 "size": item.size,
                 "bytes": item.bytes_hex,
                 "mnemonic": item.mnemonic,
                 "op_str": item.op_str,
+                "symbol": symbol.name if symbol else None,
+                "target_symbol": target_symbol,
             }
-            for item in instructions
-        ],
-    }
+        )
+    return {"addr": addr, "mode": mode, "instructions": annotated}
 
 
 @mcp.tool()
@@ -376,17 +387,20 @@ def debug_backtrace() -> dict:
         frames = Backtrace(bridge.debugger()).frames()
     except DebugError as exc:
         return debug_error(exc)
-    return {
-        "frames": [
+    symbols = bridge.symbols()
+    annotated = []
+    for frame in frames:
+        symbol = symbols.resolve(frame.pc)
+        annotated.append(
             {
                 "index": frame.index,
                 "pc": f"0x{frame.pc:08x}",
-                "function": frame.function,
+                "function": frame.function or (symbol.name if symbol else None),
                 "source": frame.source,
+                "symbol": symbol.name if symbol else None,
             }
-            for frame in frames
-        ]
-    }
+        )
+    return {"frames": annotated}
 
 
 @mcp.tool()
@@ -429,16 +443,22 @@ def debug_slots() -> dict:
 
 
 def _hit_list(result: dict) -> list[dict]:
-    """Format hit-log entries with hex addresses."""
+    """Format hit-log entries with hex addresses and symbols."""
     hits = result.get("hits", [])
-    return [
-        {
-            "pc": f"0x{int(hit['pc']):08x}",
-            "addr": f"0x{int(hit['addr']):08x}",
-            "kind": hit.get("kind"),
-        }
-        for hit in hits
-    ]
+    symbols = bridge.symbols()
+    formatted = []
+    for hit in hits:
+        pc = int(hit["pc"])
+        symbol = symbols.resolve(pc)
+        formatted.append(
+            {
+                "pc": f"0x{pc:08x}",
+                "addr": f"0x{int(hit['addr']):08x}",
+                "kind": hit.get("kind"),
+                "pc_symbol": symbol.name if symbol else None,
+            }
+        )
+    return formatted
 
 
 @mcp.tool()

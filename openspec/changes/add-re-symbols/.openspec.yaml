@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-01
+goal: Definir nomes uma vez e anotar disasm/backtrace/hits; guardar snippets
+  C+ASM por endereço, sem Ghidra por enquanto.

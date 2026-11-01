@@ -3,16 +3,22 @@
 Composition root: lazy wiring of the adapters and the domain objects. The connection
 is only opened on the first call, so the MCP starts even without the emulator running.
 """
+import logging
+import threading
+
 from .config import Config
 from .application.ports import CartFs, ControlChannel, Debugger, FileStore, Overlays
+from .application.decomp import DecompSnippets
 from .application.snapshots import Snapshots
 from .domain.cartfs import RomInfo
 from .domain.io import IoMap
-from .domain.symbols import SymbolTable
+from .domain.symbols import Symbol, SymbolTable
 from .infra.control import UnixControlChannel
 from .infra.files import OutDir
 from .infra.gdb import GdbBackend
 from .infra.ndsrom import ChannelRom, NdsRomError
+
+log = logging.getLogger("re_mcp.bridge")
 
 
 class Bridge:
@@ -29,8 +35,11 @@ class Bridge:
         self._debugger: Debugger | None = None
         self._rom: ChannelRom | None = None
         self._symbols = SymbolTable([])
+        self._symbols_loaded = False
+        self._symbols_lock = threading.RLock()
         self._files: OutDir | None = None
         self._snapshots: Snapshots | None = None
+        self._decomp: DecompSnippets | None = None
         self._io_map: IoMap | None = None
 
     @property
@@ -39,16 +48,41 @@ class Bridge:
         return self._config
 
     def symbols(self) -> SymbolTable:
-        """The loaded symbol table (via `symbol_load`)."""
-        return self._symbols
+        """The symbol table, loading ``symbols.json`` on first use."""
+        with self._symbols_lock:
+            if not self._symbols_loaded:
+                self._symbols_loaded = True
+                text = self.files().read_text("symbols.json")
+                if text:
+                    try:
+                        self._symbols = SymbolTable.from_json(text)
+                    except ValueError as exc:
+                        log.warning("tabela de símbolos inválida; começando vazia: %s", exc)
+                        self._symbols = SymbolTable([])
+            return self._symbols
 
     def set_symbols(self, symbols: SymbolTable) -> None:
-        """Replace the symbol table.
+        """Replace the symbol table (not persisted until ``save_symbols``)."""
+        with self._symbols_lock:
+            self._symbols = symbols
+            self._symbols_loaded = True
 
-        Parameters:
-            symbols (SymbolTable): The new table.
-        """
-        self._symbols = symbols
+    def add_symbol(self, symbol: Symbol) -> str:
+        """Add a symbol and persist the table, returning the JSON path."""
+        with self._symbols_lock:
+            self.symbols().add(symbol)
+            return self.save_symbols()
+
+    def save_symbols(self) -> str:
+        """Persist the symbol table and return the JSON path."""
+        with self._symbols_lock:
+            return self.files().write_text("symbols.json", self.symbols().to_json())
+
+    def decomp(self) -> DecompSnippets:
+        """Return the decomp-snippet service."""
+        if self._decomp is None:
+            self._decomp = DecompSnippets(self.files())
+        return self._decomp
 
     def snapshots(self) -> Snapshots:
         """Return the memory-snapshot service (`mem_snapshot`/`state_diff`)."""
