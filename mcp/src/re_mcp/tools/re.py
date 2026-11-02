@@ -1,4 +1,5 @@
 """MCP tools for RE workflows: watchpoints, snapshots and symbols."""
+import json
 from ..application.args import ArgsOnHit
 from ..application.contract import ContractChecks
 from ..application.display import DisplayReader
@@ -629,6 +630,57 @@ def vram_tile_bytes(
         "size": len(data),
         "hex": data.hex(),
     }
+
+
+@mcp.tool()
+def dump_tilemap(engine: str = "A", bg: int = 0) -> dict:
+    """Dump the full virtual BG map (text/affine) to JSON in `/out`.
+
+    Parameters:
+        engine (str): ``A`` or ``B``.
+        bg (int): BG layer 0..3.
+
+    Returns:
+        dict: ``{"path", "engine", "bg", "kind", "bpp", "width", "height",
+        "cell_count", ...}`` or an error.
+    """
+    reader = DisplayReader(bridge.debugger(), bridge.io_map())
+    try:
+        meta, cells = reader.dump_bg_map(engine, bg)
+    except DebugError as exc:
+        return debug_error(exc)
+    except ValueError as exc:
+        return error(exc, "Use BG text/affine; extended/bitmap/3D não é suportado.")
+    payload = {**meta, "cells": cells}
+    path = bridge.files().write_text(
+        f"bgmap_{engine.upper()}_{bg}.json", json.dumps(payload)
+    )
+    return {"path": path, **meta}
+
+
+@mcp.tool()
+def render_bg_map(engine: str = "A", bg: int = 0) -> dict:
+    """Compose the full virtual BG map (text/affine) to PNG in `/out`.
+
+    Parameters:
+        engine (str): ``A`` or ``B``.
+        bg (int): BG layer 0..3.
+
+    Returns:
+        dict: ``{"path", "engine", "bg", "kind", "bpp", "width", "height",
+        "cell_count", ...}`` or an error.
+    """
+    reader = DisplayReader(bridge.debugger(), bridge.io_map())
+    try:
+        png, meta = reader.render_bg_map(engine, bg)
+    except DebugError as exc:
+        return debug_error(exc)
+    except ValueError as exc:
+        return error(exc, "Use BG text/affine; extended/bitmap/3D não é suportado.")
+    path = bridge.files().write_bytes(
+        f"bgmap_{engine.upper()}_{bg}.png", png
+    )
+    return {"path": path, **meta}
 
 
 @mcp.tool()

@@ -5,6 +5,52 @@ _TEXT_SIZES = ((256, 256), (512, 256), (256, 512), (512, 512))
 _AFFINE_SIZES = ((128, 128), (256, 256), (512, 512), (1024, 1024))
 _ENGINE_BG_BASE = {"A": 0x06000000, "B": 0x06200000}
 _ENGINE_OBJ_BASE = {"A": 0x06400000, "B": 0x06600000}
+_ENGINE_PALETTE_BASE = {"A": 0x05000000, "B": 0x05000400}
+
+
+def tile_indices(data: bytes, bpp: int) -> tuple[tuple[int, ...], ...]:
+    """Decode an 8×8 tile into palette indices.
+
+    Parameters:
+        data (bytes): 32 bytes (4bpp) or 64 bytes (8bpp).
+        bpp (int): 4 or 8.
+
+    Returns:
+        tuple[tuple[int, ...], ...]: Eight rows of eight indices.
+
+    Raises:
+        ValueError: If ``bpp`` is invalid or the data is too short.
+    """
+    if bpp == 4:
+        if len(data) < 32:
+            raise ValueError("tile 4bpp precisa de 32 bytes")
+        rows = []
+        for y in range(8):
+            row = []
+            for x in range(8):
+                byte = data[y * 4 + x // 2]
+                row.append((byte >> 4) if x & 1 else (byte & 0x0F))
+            rows.append(tuple(row))
+        return tuple(rows)
+    if bpp == 8:
+        if len(data) < 64:
+            raise ValueError("tile 8bpp precisa de 64 bytes")
+        return tuple(
+            tuple(data[y * 8 + x] for x in range(8)) for y in range(8)
+        )
+    raise ValueError("bpp deve ser 4 ou 8")
+
+
+def rgb555(value: int) -> tuple[int, int, int]:
+    """Convert a 15-bit BGR555 colour to 8-bit RGB."""
+    red = value & 0x1F
+    green = (value >> 5) & 0x1F
+    blue = (value >> 10) & 0x1F
+    return (
+        (red << 3) | (red >> 2),
+        (green << 3) | (green >> 2),
+        (blue << 3) | (blue >> 2),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +195,11 @@ class BgLayer:
         if self.kind == "affine":
             return 8
         return 8 if (self.bgcnt & (1 << 7)) else 4
+
+    @property
+    def palette_base(self) -> int:
+        """Return the absolute BG palette base for the engine."""
+        return _ENGINE_PALETTE_BASE[self.engine]
 
     def cell_from_screen(self, screen_x: int, screen_y: int) -> ScreenCell:
         """Resolve a screen pixel to the BG cell, applying the layer scroll.

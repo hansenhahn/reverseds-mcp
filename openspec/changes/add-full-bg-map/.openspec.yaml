@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-02
+goal: Dump/composicao do BG virtual inteiro (text/affine) sem depender da janela
+  256x192 do render_layer.

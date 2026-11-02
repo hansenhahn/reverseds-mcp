@@ -1,4 +1,5 @@
 """2.3 display↔RAM helpers: pure decoding and tool serialization."""
+import json
 import struct
 from typing import cast
 
@@ -7,7 +8,7 @@ import pytest
 from re_mcp.application.display import DisplayReader
 from re_mcp.application.video import VideoReader
 from re_mcp.application.ports import Debugger
-from re_mcp.domain.display import BgLayer, ObjTileMapping
+from re_mcp.domain.display import BgLayer, ObjTileMapping, rgb555, tile_indices
 from re_mcp.domain.io import IoMap, DmaTransfer
 from re_mcp.tools import re as re_tools
 
@@ -237,3 +238,83 @@ def test_video_state_includes_scroll() -> None:
     assert len(state.scrolls) == 4
     assert (state.scrolls[0][0].raw, state.scrolls[0][1].raw) == (0x10, 0x20)
     assert (state.scrolls[1][0].raw, state.scrolls[1][1].raw) == (0, 0)
+
+
+def test_tile_indices_and_rgb555() -> None:
+    """Tiles decode to 8x8 indices and BGR555 converts to RGB."""
+    tile4 = bytes(range(32))
+    rows = tile_indices(tile4, 4)
+    assert rows[0][:4] == (0, 0, 1, 0)
+    rows8 = tile_indices(bytes(range(64)), 8)
+    assert rows8[0][:4] == (0, 1, 2, 3)
+    assert rgb555(0x001F) == (255, 0, 0)
+    assert BgLayer.from_registers("B", 0, 0, 0).palette_base == 0x05000400
+
+
+def test_dump_and_render_full_bg_map() -> None:
+    """The full map dump and PNG composition use bulk VRAM data."""
+    memory = _memory()
+    palette = bytearray(512)
+    palette[17 * 2:17 * 2 + 2] = (0x001F).to_bytes(2, "little")  # red
+    memory[0x05000400] = bytes(palette)
+    block = bytearray(0x4480)
+    block[0:2] = (0x1223).to_bytes(2, "little")
+    block[0x4460:0x4480] = bytes(range(32))
+    memory[0x06200000] = bytes(block)
+    debugger = FakeDebugger(memory)
+    reader = DisplayReader(cast(Debugger, debugger), IoMap.default())
+
+    meta, cells = reader.dump_bg_map("B", 0)
+    assert (meta["width"], meta["height"], meta["cell_count"]) == (256, 256, 1024)
+    first = cells[0]
+    assert (first["tile_index"], first["palette"]) == (0x223, 1)
+
+    png, meta = reader.render_bg_map("B", 0)
+    assert meta["cell_count"] == 1024
+    from PIL import Image
+    from io import BytesIO
+    image = Image.open(BytesIO(png)).convert("RGBA")
+    assert image.size == (256, 256)
+    assert image.getpixel((2, 0)) == (255, 0, 0, 255)
+    assert image.getpixel((0, 0)) == (0, 0, 0, 0)
+
+
+class FakeFiles:
+    def __init__(self) -> None:
+        self.files: dict[str, str | bytes] = {}
+
+    def write_text(self, name: str, text: str) -> str:
+        self.files[name] = text
+        return f"/out/{name}"
+
+    def write_bytes(self, name: str, data: bytes) -> str:
+        self.files[name] = data
+        return f"/out/{name}"
+
+
+def test_dump_tilemap_and_render_bg_map_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The tools write JSON/PNG artifacts and return metadata."""
+    memory = _memory()
+    debugger = FakeDebugger(memory)
+    files = FakeFiles()
+
+    class FakeBridge:
+        def debugger(self) -> FakeDebugger:
+            return debugger
+
+        def io_map(self) -> IoMap:
+            return IoMap.default()
+
+        def files(self) -> FakeFiles:
+            return files
+
+    monkeypatch.setattr(re_tools, "bridge", FakeBridge())
+    out = re_tools.dump_tilemap("B", 0)
+    assert out["cell_count"] == 1024
+    payload = json.loads(files.files["bgmap_B_0.json"])
+    assert payload["cell_count"] == 1024
+    assert len(payload["cells"]) == 1024
+
+    out = re_tools.render_bg_map("B", 0)
+    assert out["cell_count"] == 1024
+    assert files.files["bgmap_B_0.png"][:8] == b"\x89PNG\r\n\x1a\n"
