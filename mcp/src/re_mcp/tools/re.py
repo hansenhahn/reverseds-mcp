@@ -28,33 +28,49 @@ def _overlay_dict(hit: OverlayHit) -> dict:
         "ram_size": overlay.ram_size,
         "bss_size": overlay.bss_size,
         "file_id": overlay.file_id,
-        "offset": hit.offset,
+        "sinit_start": overlay.sinit_start,
+        "sinit_end": overlay.sinit_end,
+        "flags": overlay.flags,
+        "compressed_size": overlay.compressed_size,
+        "offset": hit.offset_file,
+        "offset_file": hit.offset_file,
+        "offset_code": hit.offset_code,
     }
 
 
 @mcp.tool()
-def addr_valid(value: str | int) -> dict:
-    """Validate/normalize an ARM9 address and resolve its region and overlay.
+def addr_valid(
+    value: str | int, overlay: int | None = None, code_base: int | None = None
+) -> dict:
+    """Validate/normalize an ARM9 address and resolve its region and overlays.
 
     Parameters:
         value (str | int): Address as ``0x``-hex, decimal text or integer.
+        overlay (int | None): Explicit overlay ID for the selected hit.
+        code_base (int | None): Optional overlay code base (for ``offset_code``).
 
     Returns:
         dict: ``{"value_dec", "value_hex", "aligned4", "mapped", "region",
-        "overlay"}`` or ``{"error", "hint"?}``.
+        "overlays", "overlay", "ambiguous"}`` or ``{"error", "hint"?}``.
     """
     try:
         addr = AddressSpace.parse(value)
     except ValueError as exc:
         return error(exc, "Use hexadecimal (0x...) ou decimal (0..0xFFFFFFFF).")
     info = AddressSpace.describe(addr)
-    overlay: dict | None = None
+    overlay_dict: dict | None = None
+    overlays: list[dict] = []
+    ambiguous = False
     try:
-        hit = bridge.overlays().overlay_for_address(addr)
+        resolution = bridge.overlay_resolver().resolve(addr, "arm9", overlay, code_base)
+        overlays = [_overlay_dict(hit) for hit in resolution.candidates]
+        ambiguous = resolution.ambiguous
+        if resolution.selected is not None:
+            overlay_dict = _overlay_dict(resolution.selected)
     except (NdsRomError, ControlError):
-        hit = None
-    if hit is not None:
-        overlay = _overlay_dict(hit)
+        pass
+    except ValueError as exc:
+        return error(exc, "code_base deve estar dentro do intervalo da overlay.")
     symbol = bridge.symbols().resolve(addr)
     return {
         "value_dec": info.value,
@@ -62,7 +78,9 @@ def addr_valid(value: str | int) -> dict:
         "aligned4": info.aligned4,
         "mapped": info.mapped,
         "region": info.region.name if info.region else None,
-        "overlay": overlay,
+        "overlays": overlays,
+        "overlay": overlay_dict,
+        "ambiguous": ambiguous,
         "symbol": symbol.name if symbol else None,
     }
 

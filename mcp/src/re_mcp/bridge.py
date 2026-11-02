@@ -9,6 +9,7 @@ import threading
 from .config import Config
 from .application.ports import CartFs, ControlChannel, Debugger, FileStore, Overlays
 from .application.decomp import DecompSnippets
+from .application.overlays import OverlayResolver
 from .application.snapshots import Snapshots
 from .domain.cartfs import RomInfo
 from .domain.io import IoMap
@@ -40,6 +41,7 @@ class Bridge:
         self._files: OutDir | None = None
         self._snapshots: Snapshots | None = None
         self._decomp: DecompSnippets | None = None
+        self._overlay_resolver: OverlayResolver | None = None
         self._io_map: IoMap | None = None
 
     @property
@@ -89,6 +91,17 @@ class Bridge:
         if self._snapshots is None:
             self._snapshots = Snapshots(self.debugger(), self.files())
         return self._snapshots
+
+    def overlay_resolver(self) -> OverlayResolver:
+        """Return the overlay resolver (candidates + active selection)."""
+        if self._overlay_resolver is None:
+            self._overlay_resolver = OverlayResolver(self.overlays())
+        return self._overlay_resolver
+
+    def clear_overlay(self, core: str = "arm9") -> None:
+        """Clear the active overlay without touching the emulator/ROM."""
+        if self._overlay_resolver is not None:
+            self._overlay_resolver.clear(core)
 
     def io_map(self) -> IoMap:
         """Return the IO register map (built on the first call, at the composition root).
@@ -198,3 +211,4 @@ class Bridge:
             self._debugger.close()
             self._debugger = None
         self._rom = None
+        self._overlay_resolver = None

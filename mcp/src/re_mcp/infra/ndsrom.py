@@ -7,7 +7,7 @@ contents are read with ``rom.info``/``rom.read``. Parsing stays in the domain
 import threading
 
 from ..domain.cartfs import FileEntry, NdsFs, NdsHeader, RomInfo
-from ..domain.overlays import Overlay, OverlayHit, OverlayTable
+from ..domain.overlays import Overlay, OverlayDetails, OverlayHit, OverlayTable
 from ..application.ports import CartFs, ControlChannel, Overlays
 
 _HEADER_SIZE = 0x200
@@ -156,3 +156,33 @@ class ChannelRom(CartFs, Overlays):
         _, overlays = self._snapshot()
         table = overlays.get(core)
         return table.for_address(addr) if table is not None else None
+
+    def overlay_candidates(self, addr: int, core: str = "arm9") -> list[OverlayHit]:
+        """Return every overlay covering ``addr`` (shared bases yield multiple)."""
+        _, overlays = self._snapshot()
+        table = overlays.get(core)
+        return list(table.candidates(addr)) if table is not None else []
+
+    def overlay_details(self, index: int, core: str = "arm9") -> OverlayDetails:
+        """Return y9/FAT/compression details for overlay ``index``."""
+        fs, overlays = self._snapshot()
+        table = overlays.get(core)
+        if table is None:
+            raise NdsRomError(f"core desconhecido: {core!r} (use 'arm9' ou 'arm7')")
+        overlay = table.by_index(index)
+        if overlay is None:
+            raise NdsRomError(f"overlay {index} não existe no {core}")
+        span = fs.span_by_id(overlay.file_id)
+        if span is None:
+            raise NdsRomError(
+                f"file_id {overlay.file_id} do overlay {index} não está no FAT"
+            )
+        compressed = span.size < overlay.ram_size
+        compressed_size = overlay.compressed_size if compressed else 0
+        return OverlayDetails(
+            overlay=overlay,
+            file_offset=span.start,
+            file_size=span.size,
+            compressed=compressed,
+            compressed_size=compressed_size,
+        )
