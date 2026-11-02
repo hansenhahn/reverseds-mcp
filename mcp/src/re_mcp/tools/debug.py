@@ -450,20 +450,51 @@ def debug_slots() -> dict:
 
 
 def _hit_list(result: dict, core: str = "arm9") -> list[dict]:
-    """Format hit-log entries with hex addresses and symbols."""
+    """Format hit-log entries with exact access, hex addresses and symbols."""
     hits = result.get("hits", [])
     symbols = bridge.symbols()
     chosen_overlay = bridge.active_overlay(core)
-    formatted = []
+    parsed = []
     for hit in hits:
         pc = int(hit["pc"])
-        symbol = symbols.resolve(pc, chosen_overlay)
+        parsed.append(
+            {
+                "pc": pc,
+                "pc_fault": int(hit.get("pc_fault", pc)),
+                "addr": int(hit["addr"]),
+                "width": int(hit.get("width", 0)),
+                "kind": hit.get("kind"),
+                "rmw": bool(hit.get("rmw", False)),
+            }
+        )
+
+    write_keys = {
+        (hit["pc_fault"], hit["addr"]) for hit in parsed if hit["kind"] == "write"
+    }
+    read_keys = {
+        (hit["pc_fault"], hit["addr"]) for hit in parsed if hit["kind"] == "read"
+    }
+    for hit in parsed:
+        if hit["kind"] in ("read", "write"):
+            key = (hit["pc_fault"], hit["addr"])
+            if key in write_keys and key in read_keys:
+                hit["rmw"] = True
+
+    formatted = []
+    for hit in parsed:
+        pc_symbol = symbols.resolve(hit["pc"], chosen_overlay)
+        fault_symbol = symbols.resolve(hit["pc_fault"], chosen_overlay)
         formatted.append(
             {
-                "pc": f"0x{pc:08x}",
-                "addr": f"0x{int(hit['addr']):08x}",
-                "kind": hit.get("kind"),
-                "pc_symbol": symbol.name if symbol else None,
+                "pc": f"0x{hit['pc']:08x}",
+                "pc_fault": f"0x{hit['pc_fault']:08x}",
+                "addr": f"0x{hit['addr']:08x}",
+                "access_addr": f"0x{hit['addr']:08x}",
+                "width": hit["width"],
+                "rmw": hit["rmw"],
+                "kind": hit["kind"],
+                "pc_symbol": pc_symbol.name if pc_symbol else None,
+                "fault_pc_symbol": fault_symbol.name if fault_symbol else None,
             }
         )
     return formatted
@@ -518,7 +549,8 @@ def hit_log_read(core: str = "arm9", clear: bool = False) -> dict:
         clear (bool): Clear the log after a successful read.
 
     Returns:
-        dict: ``{"count", "dropped", "hits": [{"pc", "addr", "kind"}]}`` or
+        dict: ``{"count", "dropped", "hits": [...]}`` with ``pc``, ``pc_fault``,
+        ``addr``/``access_addr``, ``width``, ``rmw``, ``kind`` and symbols; or
         ``{"error", "hint"?}``.
     """
     result = control_call("gdb.hits.read", {"core": core})

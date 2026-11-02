@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-02
+goal: Hit log com instrucao faulting, endereco/largura exatos e RMW, mantendo
+  pc/addr compativeis.

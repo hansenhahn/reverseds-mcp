@@ -70,8 +70,17 @@ def test_hit_log_read_formats_and_clears(monkeypatch: pytest.MonkeyPatch) -> Non
     assert out == {
         "count": 1,
         "dropped": 2,
-        "hits": [{"pc": "0x02001100", "addr": "0x06000000", "kind": "write",
-                  "pc_symbol": "foo"}],
+        "hits": [{
+            "pc": "0x02001100",
+            "pc_fault": "0x02001100",
+            "addr": "0x06000000",
+            "access_addr": "0x06000000",
+            "width": 0,
+            "rmw": False,
+            "kind": "write",
+            "pc_symbol": "foo",
+            "fault_pc_symbol": "foo",
+        }],
     }
     assert calls == ["gdb.hits.read", "gdb.hits.clear"]
 
@@ -112,3 +121,25 @@ def test_emu_reset_refreshes_gdb_register_cache(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(control_tools, "control_call", fake_call)
     assert control_tools.emu_reset() == {"ok": True}
     assert refreshed == [True]
+
+
+def test_hit_log_exact_fields_and_rmw(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exact fields are preserved and read+write at the same PC/address is RMW."""
+    def fake(method: str, params: dict | None = None, timeout: float | None = None) -> dict:
+        return {
+            "count": 2,
+            "dropped": 0,
+            "hits": [
+                {"pc": 0x02001200, "pc_fault": 0x020011FC, "addr": 0x021F274C,
+                 "width": 1, "rmw": False, "kind": "read"},
+                {"pc": 0x02001200, "pc_fault": 0x020011FC, "addr": 0x021F274C,
+                 "width": 1, "rmw": False, "kind": "write"},
+            ],
+        }
+
+    monkeypatch.setattr(debug_tools, "control_call", fake)
+    monkeypatch.setattr(debug_tools, "bridge", FakeHitBridge())
+    out = debug_tools.hit_log_read()
+    assert [hit["pc_fault"] for hit in out["hits"]] == ["0x020011fc", "0x020011fc"]
+    assert [hit["width"] for hit in out["hits"]] == [1, 1]
+    assert all(hit["rmw"] is True for hit in out["hits"])

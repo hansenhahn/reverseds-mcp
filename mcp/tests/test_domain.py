@@ -173,3 +173,33 @@ def test_input_step_rejects_mask_and_touch() -> None:
     """A step cannot set both a key mask and a touch."""
     with pytest.raises(ValueError):
         InputStep(ms=10, mask=0xFF7, touch=TouchPoint(1, 2))
+
+
+def test_dma_trace_filters_and_summary() -> None:
+    """Collect applies range/cpu/channel/min_len/limit and summarize groups duplicates."""
+    def item(cpu: int, ch: int, src: int, dst: int, pc: int) -> dict:
+        return {"cpu": cpu, "ch": ch, "src": src, "dst": dst,
+                "cnt": 0x100 | (1 << 26) | (1 << 31), "pc": pc}
+
+    transfers = [
+        item(0, 1, 0x02000000, 0x06000000, 0x0201ABCD),
+        item(0, 1, 0x02000000, 0x06000000, 0x0201ABCD),
+        item(1, 0, 0x021A3C10, 0x07000400, 0x0201ABCD),
+    ]
+    message = {"method": "event.dma", "params": {"transfers": transfers, "count": 3}}
+    ch = _FakeDmaChannel([message])
+    ticks = iter([0.0, 0.0, 5.0])
+    trace = DmaTrace(ch, clock=lambda: next(ticks, 5.0))
+    out = trace.collect(
+        2.0, dst_range=(0x06000000, 0x06001000), cpu=0, channel=1, min_len=0x100
+    )
+    assert len(out) == 2
+    assert all(transfer.destination.address == 0x06000000 for transfer in out)
+    groups = trace.summarize(out)
+    assert len(groups) == 1
+    assert (groups[0].count, groups[0].channel, groups[0].length) == (2, 1, 0x400)
+
+    ch = _FakeDmaChannel([message])
+    ticks = iter([0.0, 0.0, 5.0])
+    trace = DmaTrace(ch, clock=lambda: next(ticks, 5.0))
+    assert len(trace.collect(2.0, max_items=1)) == 1
