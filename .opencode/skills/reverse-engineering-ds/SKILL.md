@@ -99,7 +99,9 @@ layer (engine A/B × bg0-3/obj/3d) and writes PNGs. `video_state(engine)` decode
 DISPCNT/BGxCNT/scroll/brightness; `io_read` decodes scroll/window/mosaic/blend
 (A/B) and reports `write_only` registers (`raw=` decodes a known value without
 I/O); `vram_layout()` gives the real bank mapping (VRAMCNT is write-only on
-hardware, but the emulator exposes it).
+hardware, but the emulator exposes it). `cell_at_screen(engine, bg, x, y)` maps a
+screen pixel to the BG cell using scroll, and `render_layer(..., highlight=[x,y])`
+draws an 8×8 box on that cell.
 
 Hand-composing tiles/sprites/palettes is guesswork; the renderer is ground truth.
 Only fall back to manual decoding to extract a raw asset for offline tools.
