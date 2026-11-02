@@ -126,7 +126,9 @@ IO addresses and `find_writer`/`find_reader` complement this.
 
 DMA can be **deferred** (FIFO/flush at end of frame). If the trace shows the
 upload after the draw call, that is normal; do not mistake the deferred upload for
-the cause of a layout bug.
+the cause of a layout bug. Filter/aggregate instead of dumping everything:
+`dma_trace_read(dst_range=[...], src_range=[...], cpu="arm9", channel=1,
+min_len=..., summary=true, max_items=...)`.
 
 ## Technique 5 — Asset-identification pipeline
 
@@ -198,7 +200,8 @@ on each one.
   interpreting the PC/address.
 - **DMA/VRAM**: arm `set_watchpoint(vram_addr, "write")` and enable the hit log;
   when a DMA fills the range, the log shows `dma-write` with the PC that
-  programmed the DMA. Without the log, the stop also lands on that PC.
+  programmed the DMA, the real destination (`access_addr`) and `width=len`.
+  Without the log, the stop also lands on that PC.
 
 ## Technique 10 — Overlay model and decomp unit ownership
 
@@ -297,18 +300,20 @@ hardcode a game's bases into reusable rules.
 
 **Goal:** interpret runtime hits without inventing causality.
 
-- **PC may be ahead of the access.** On ARM the logged PC can be `pc+4`; on Thumb,
-  `pc+2`. Disassemble around the PC and look for the actual `ldr/str/ldm/stm`. If
-  the tool exposes a faulting PC, prefer it; otherwise treat `pc-4`/`pc-2` as
-  candidates.
-- **Granularity is a word.** A watchpoint triggers on the aligned word that
-  contains the access. The byte-level `addr` in a log is not proof of the exact
-  byte; adjacent UTF-16 chars cannot be distinguished with one watchpoint.
+- **Use `pc_fault`.** `hit_log_read` exposes the instruction that accessed
+  (`pc_fault`); `pc` remains for compatibility. On ARM the old `pc` could be
+  `pc+4`; disassemble at `pc_fault` first. If the payload is old, fall back to
+  `pc-4`/`pc-2` as candidates.
+- **Use `access_addr`/`width`.** `width` is 1/2/4 bytes (CPU) or `len` (DMA);
+  `access_addr` is the real access/destination. A watchpoint still triggers on the
+  aligned word, so adjacent byte accesses are distinguished by these fields when
+  the bus reports them.
 - **RMW triggers read watchpoints.** `swpb` (and other read-modify-write
   sequences) can make a read watchpoint fire on the decoder/writer, not on the
-  consumer. For decompressed data, arm the watchpoint **after** decompression, or
-  filter by PC, or use the hit log to list all writers and take the last one
-  before the DMA.
+  consumer. `hit_log_read` marks `rmw=true` when a read and a write share the
+  same `pc_fault`+`access_addr`; for decompressed data, arm the watchpoint
+  **after** decompression, or filter by PC, or take the last writer before the
+  DMA.
 - **DMA is invisible to CPU watchpoints.** Use DMA/VRAM watchpoints or the DMA
   trace (Technique 4).
 - **Hit log for mass, stop for context.** Use `hit_log_*` to count/filter; stop

@@ -1,6 +1,6 @@
 """MCP tools for the control channel: ping, input, screen, savestate, run and trace."""
 from ..application.cart_trace import CartTrace
-from ..application.dma_trace import DmaTrace
+from ..application.dma_trace import DmaGroup, DmaTrace
 from ..application.input import InputMacros
 from ..domain.input import InputStep, TouchPoint
 from ..domain.io import DmaTransfer
@@ -397,21 +397,98 @@ def dma_trace_start(batch: int = 256, timeout_ms: int = 100, max_items: int = 65
     )
 
 
+def _dma_group_dict(group: DmaGroup) -> dict:
+    """Serialize an aggregated DMA group."""
+    return {
+        "channel": group.channel,
+        "cpu": "arm9" if group.cpu == 0 else "arm7",
+        "source": f"0x{group.source:08x}",
+        "destination": f"0x{group.destination:08x}",
+        "length": group.length,
+        "pc": f"0x{group.pc:08x}",
+        "count": group.count,
+    }
+
+
+def _parse_range(value: list[int] | None, name: str) -> tuple[int, int] | None:
+    """Validate an optional ``[start, end)`` range."""
+    if value is None:
+        return None
+    if len(value) != 2:
+        raise ValueError(f"{name} deve ter exatamente [start, end]")
+    start, end = int(value[0]), int(value[1])
+    if start > end:
+        raise ValueError(f"{name}: start não pode ser maior que end")
+    return start, end
+
+
 @mcp.tool()
-def dma_trace_read(seconds: float = 2.0) -> dict:
-    """Collect the DMA transfers for a period (``event.dma`` batches), decoded.
+def dma_trace_read(
+    seconds: float = 2.0,
+    dst_range: list[int] | None = None,
+    src_range: list[int] | None = None,
+    cpu: str | None = None,
+    channel: int | None = None,
+    min_len: int = 0,
+    max_items: int | None = None,
+    summary: bool = False,
+) -> dict:
+    """Collect the DMA transfers for a period, optionally filtered/aggregated.
 
     Parameters:
         seconds (float): Collection duration in seconds.
+        dst_range (list[int] | None): ``[start, end)`` destination address filter.
+        src_range (list[int] | None): ``[start, end)`` source address filter.
+        cpu (str | None): ``arm9`` or ``arm7``.
+        channel (int | None): DMA channel (0..3).
+        min_len (int): Minimum transfer length in bytes.
+        max_items (int | None): Maximum number of transfers to return.
+        summary (bool): Aggregate by ``(src,dst,len,cpu,channel,pc)``.
 
     Returns:
-        dict: ``{"count": N, "transfers": [...]}`` or ``{"error": ...}``.
+        dict: ``{"count", "transfers"}`` or ``{"count", "groups"}``; or
+        ``{"error", "hint"?}``.
     """
     try:
-        channel = bridge.control()
+        dst = _parse_range(dst_range, "dst_range")
+        src = _parse_range(src_range, "src_range")
+    except ValueError as exc:
+        return error(exc, "Use [start, end] com start <= end.")
+    cpu_value: int | None = None
+    if cpu is not None:
+        key = cpu.lower()
+        if key in ("arm9", "9"):
+            cpu_value = 0
+        elif key in ("arm7", "7"):
+            cpu_value = 1
+        else:
+            return error(ValueError(f"cpu inválido: {cpu!r}"), "Use 'arm9' ou 'arm7'.")
+    if channel is not None and not 0 <= channel <= 3:
+        return error(ValueError(f"channel inválido: {channel}"), "Use 0..3.")
+    if min_len < 0:
+        return error(ValueError("min_len não pode ser negativo"), "Use >= 0.")
+    if max_items is not None and max_items <= 0:
+        return error(ValueError("max_items deve ser > 0"), "Use um inteiro positivo.")
+    try:
+        channel_obj = bridge.control()
     except ControlError as exc:
         return error(exc, _CONTROL_HINT)
-    transfers = DmaTrace(channel).collect(seconds)
+    trace = DmaTrace(channel_obj)
+    transfers = trace.collect(
+        seconds,
+        dst_range=dst,
+        src_range=src,
+        cpu=cpu_value,
+        channel=channel,
+        min_len=min_len,
+        max_items=max_items,
+    )
+    if summary:
+        groups = trace.summarize(transfers)
+        return {
+            "count": len(transfers),
+            "groups": [_dma_group_dict(group) for group in groups],
+        }
     return {"count": len(transfers), "transfers": [_dma_dict(t) for t in transfers]}
 
 
