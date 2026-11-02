@@ -38,6 +38,22 @@ def _overlay_dict(hit: OverlayHit) -> dict:
     }
 
 
+def _active_overlay() -> int | None:
+    """Active ARM9 overlay from ``overlay_select``, without opening the channel."""
+    return bridge.active_overlay("arm9")
+
+
+def _symbol_dict(symbol: Symbol) -> dict:
+    """Serialize a symbol for a tool response."""
+    return {
+        "name": symbol.name,
+        "addr": f"0x{symbol.addr:08x}",
+        "kind": symbol.kind,
+        "comment": symbol.comment,
+        "overlay": symbol.overlay,
+    }
+
+
 @mcp.tool()
 def addr_valid(
     value: str | int, overlay: int | None = None, code_base: int | None = None
@@ -58,20 +74,29 @@ def addr_valid(
     except ValueError as exc:
         return error(exc, "Use hexadecimal (0x...) ou decimal (0..0xFFFFFFFF).")
     info = AddressSpace.describe(addr)
+    chosen_overlay = overlay if overlay is not None else _active_overlay()
     overlay_dict: dict | None = None
     overlays: list[dict] = []
     ambiguous = False
     try:
         resolution = bridge.overlay_resolver().resolve(addr, "arm9", overlay, code_base)
-        overlays = [_overlay_dict(hit) for hit in resolution.candidates]
+        for hit in resolution.candidates:
+            item = _overlay_dict(hit)
+            candidate_symbol = bridge.symbols().resolve(addr, hit.overlay.index)
+            item["symbol"] = candidate_symbol.name if candidate_symbol else None
+            overlays.append(item)
         ambiguous = resolution.ambiguous
         if resolution.selected is not None:
             overlay_dict = _overlay_dict(resolution.selected)
+            selected_symbol = bridge.symbols().resolve(
+                addr, resolution.selected.overlay.index
+            )
+            overlay_dict["symbol"] = selected_symbol.name if selected_symbol else None
     except (NdsRomError, ControlError):
         pass
     except ValueError as exc:
         return error(exc, "code_base deve estar dentro do intervalo da overlay.")
-    symbol = bridge.symbols().resolve(addr)
+    symbol = bridge.symbols().resolve(addr, chosen_overlay)
     return {
         "value_dec": info.value,
         "value_hex": info.value_hex,
@@ -105,7 +130,7 @@ def find_writer(addr: int, timeout: float = 30.0, condition: str | None = None) 
         return debug_error(exc)
     if hit is None:
         return {"hit": None}
-    symbol = bridge.symbols().resolve(hit.pc)
+    symbol = bridge.symbols().resolve(hit.pc, _active_overlay())
     return {"hit": {"pc": hit.pc, "pc_hex": f"0x{hit.pc:08x}",
                     "pc_symbol": symbol.name if symbol else None,
                     "registers": hit.registers}}
@@ -130,7 +155,7 @@ def find_reader(addr: int, timeout: float = 30.0, condition: str | None = None) 
         return debug_error(exc)
     if hit is None:
         return {"hit": None}
-    symbol = bridge.symbols().resolve(hit.pc)
+    symbol = bridge.symbols().resolve(hit.pc, _active_overlay())
     return {"hit": {"pc": hit.pc, "pc_hex": f"0x{hit.pc:08x}",
                     "pc_symbol": symbol.name if symbol else None,
                     "registers": hit.registers}}
@@ -172,7 +197,7 @@ def args_on_hit(
     symbols = bridge.symbols()
     serialized = []
     for hit in hits:
-        symbol = symbols.resolve(hit.pc)
+        symbol = symbols.resolve(hit.pc, _active_overlay())
         serialized.append(
             {
                 "pc": hit.pc,
@@ -233,7 +258,7 @@ def contract_check(
     except DebugError as exc:
         return debug_error(exc)
     symbols = bridge.symbols()
-    symbol = symbols.resolve(addr)
+    symbol = symbols.resolve(addr, _active_overlay())
     serialized = []
     divergences: list[dict] = []
     for hit in hits:
@@ -345,7 +370,7 @@ def field_xref(
     """
     base_symbol = None
     if isinstance(base, str):
-        symbol = bridge.symbols().by_name(base)
+        symbol = bridge.symbols().by_name(base, _active_overlay())
         if symbol is None:
             return {"error": f"símbolo não encontrado: {base}"}
         base_addr = symbol.addr
@@ -374,7 +399,7 @@ def field_xref(
     if hit is None:
         result["hit"] = None
         return result
-    symbol = bridge.symbols().resolve(hit.pc)
+    symbol = bridge.symbols().resolve(hit.pc, _active_overlay())
     result["hit"] = {
         "pc": hit.pc,
         "pc_hex": f"0x{hit.pc:08x}",
@@ -631,7 +656,7 @@ def dma_source(
     symbols = bridge.symbols()
     hits = []
     for transfer in transfers:
-        symbol = symbols.resolve(transfer.pc)
+        symbol = symbols.resolve(transfer.pc, _active_overlay())
         hits.append(
             {
                 "channel": transfer.channel,
@@ -700,10 +725,11 @@ def symbol_define(
         name (str): Symbol name.
         kind (str): ``function``, ``label``, ``data``, ``struct`` or a free-form kind.
         comment (str | None): Optional note.
-        overlay (int | None): Optional overlay id (metadata; resolution is by address).
+        overlay (int | None): Overlay ID; part of the symbol key (``None`` = global).
 
     Returns:
-        dict: ``{"ok": true, "addr", "name", "kind", "count", "path"}`` or ``{"error": ...}``.
+        dict: ``{"ok": true, "addr", "name", "kind", "overlay", "count", "path"}``
+        or ``{"error": ...}``.
     """
     path = bridge.add_symbol(Symbol(addr, name, kind, comment, overlay))
     return {
@@ -711,22 +737,24 @@ def symbol_define(
         "addr": f"0x{addr:08x}",
         "name": name,
         "kind": kind,
+        "overlay": overlay,
         "count": len(bridge.symbols()),
         "path": path,
     }
 
 
 @mcp.tool()
-def symbol_list(kind: str | None = None) -> dict:
-    """List persistent symbols, optionally filtered by kind.
+def symbol_list(kind: str | None = None, overlay: int | None = None) -> dict:
+    """List persistent symbols, optionally filtered by kind and overlay.
 
     Parameters:
         kind (str | None): Optional kind filter.
+        overlay (int | None): Optional exact overlay filter.
 
     Returns:
         dict: ``{"count": N, "symbols": [...]}``.
     """
-    symbols = bridge.symbols().all()
+    symbols = bridge.symbols().all(overlay)
     if kind:
         symbols = [symbol for symbol in symbols if symbol.kind == kind]
     return {
@@ -745,44 +773,84 @@ def symbol_list(kind: str | None = None) -> dict:
 
 
 @mcp.tool()
-def symbol_load(path: str, merge: bool = True) -> dict:
-    """Load a symbol map (`.map`), merging with the persistent table by default.
+def symbol_load(
+    path: str, merge: bool = True, overlay: int | None = None
+) -> dict:
+    """Load a symbol map (`.map`), optionally scoped to an overlay.
 
     Parameters:
         path (str): Path to the `.map` file (lines ``address name``).
-        merge (bool): Merge into the current table (default) or replace it.
+        merge (bool): Merge into the current table (default) or replace.
+        overlay (int | None): Tag every symbol with this overlay. With
+            ``merge=false``, replace only that overlay (keep the rest).
 
     Returns:
-        dict: ``{"ok": true, "count": N, "path": ...}`` or ``{"error": ...}``.
+        dict: ``{"ok": true, "count": N, "overlay": ..., "path": ...}`` or
+        ``{"error": ...}``.
     """
     try:
         with open(path, encoding="utf-8") as handle:
             table = SymbolTable.from_map(handle.read())
     except OSError as exc:
         return {"error": str(exc)}
+    if overlay is not None:
+        table = SymbolTable(
+            [
+                Symbol(
+                    symbol.addr,
+                    symbol.name,
+                    symbol.kind,
+                    symbol.comment,
+                    overlay,
+                )
+                for symbol in table.all()
+            ]
+        )
     if merge:
         bridge.symbols().merge(table)
-    else:
+    elif overlay is None:
         bridge.set_symbols(table)
+    else:
+        bridge.symbols().replace_overlay(overlay, table)
     out_path = bridge.save_symbols()
-    return {"ok": True, "count": len(bridge.symbols()), "path": out_path}
+    return {
+        "ok": True,
+        "count": len(bridge.symbols()),
+        "overlay": overlay,
+        "path": out_path,
+    }
 
 
 @mcp.tool()
-def symbol_lookup(addr: int) -> dict:
-    """Resolve an address to the symbol containing it.
+def symbol_lookup(addr: int, overlay: int | None = None) -> dict:
+    """Resolve an address to the symbol, optionally scoped to an overlay.
 
     Parameters:
         addr (int): Address to look up.
+        overlay (int | None): Explicit overlay; defaults to the active selection.
 
     Returns:
-        dict: ``{"name", "addr", "addr_hex", "kind", "comment", "overlay"}`` or
-        ``{"error": ...}``.
+        dict: Symbol fields, or ``{"ambiguous": true, "symbols": [...]}`` when
+        more than one symbol shares the address; or ``{"error": ...}``.
     """
-    symbol = bridge.symbols().resolve(addr)
-    if symbol is None:
-        return {"error": "nenhum símbolo contém esse endereço"}
+    chosen_overlay = overlay if overlay is not None else _active_overlay()
+    candidates = bridge.symbols().candidates(addr, chosen_overlay)
+    if not candidates:
+        return {
+            "error": "nenhum símbolo contém esse endereço",
+            "hint": "Defina com symbol_define ou carregue um .map.",
+        }
+    if len(candidates) > 1:
+        return {
+            "ambiguous": True,
+            "addr": f"0x{addr:08x}",
+            "overlay": chosen_overlay,
+            "count": len(candidates),
+            "symbols": [_symbol_dict(symbol) for symbol in candidates],
+        }
+    symbol = candidates[0]
     return {
+        "ambiguous": False,
         "name": symbol.name,
         "addr": symbol.addr,
         "addr_hex": f"0x{symbol.addr:08x}",

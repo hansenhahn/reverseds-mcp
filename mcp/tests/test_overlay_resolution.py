@@ -3,7 +3,7 @@ import pytest
 
 from re_mcp.application.overlays import OverlayResolver
 from re_mcp.domain.overlays import Overlay, OverlayDetails, OverlayHit, OverlayTable
-from re_mcp.domain.symbols import SymbolTable
+from re_mcp.domain.symbols import Symbol, SymbolTable
 from re_mcp.tools import cart as cart_tools
 from re_mcp.tools import re as re_tools
 
@@ -37,8 +37,9 @@ class FakeOverlays:
 class FakeBridge:
     """Bridge with the overlay resolver and the pieces used by `addr_valid`."""
 
-    def __init__(self) -> None:
+    def __init__(self, table: SymbolTable | None = None) -> None:
         self._resolver = OverlayResolver(FakeOverlays())
+        self.table = table or SymbolTable([])
 
     def refresh_rom(self) -> None:
         return None
@@ -49,11 +50,14 @@ class FakeBridge:
     def overlay_resolver(self) -> OverlayResolver:
         return self._resolver
 
+    def active_overlay(self, core: str = "arm9") -> int | None:
+        return self._resolver.selection(core)[0]
+
     def clear_overlay(self, core: str = "arm9") -> None:
         self._resolver.clear(core)
 
     def symbols(self) -> SymbolTable:
-        return SymbolTable([])
+        return self.table
 
 
 def test_resolver_returns_all_candidates() -> None:
@@ -146,3 +150,20 @@ def test_resolver_code_base_without_candidates_is_empty() -> None:
     assert out.candidates == ()
     assert out.selected is None
     assert out.code_base == BASE + 0x600
+
+
+def test_addr_valid_annotates_each_candidate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each overlay candidate gets its own symbol; active overlay wins on top."""
+    bridge = FakeBridge()
+    bridge.table.add(Symbol(0x020A11C4, "fn_22", overlay=22))
+    bridge.table.add(Symbol(0x020A11C4, "fn_25", overlay=25))
+    monkeypatch.setattr(re_tools, "bridge", bridge)
+
+    out = re_tools.addr_valid(0x020A11C4)
+    by_index = {item["index"]: item["symbol"] for item in out["overlays"]}
+    assert by_index == {22: "fn_22", 25: "fn_25"}
+    assert out["symbol"] is None
+
+    bridge.overlay_resolver().select(25)
+    out = re_tools.addr_valid(0x020A11C4)
+    assert out["symbol"] == "fn_25"

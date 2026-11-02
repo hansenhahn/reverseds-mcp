@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class Symbol:
-    """A symbol: a name for an address, with optional model metadata."""
+    """A symbol: a name for an address, optionally scoped to an overlay."""
 
     addr: int
     name: str
@@ -16,7 +16,7 @@ class Symbol:
 
 
 class SymbolTable:
-    """Thread-safe symbol table ordered by address, with nearest resolution."""
+    """Thread-safe symbol table keyed by ``(addr, overlay)``."""
 
     def __init__(self, symbols: list[Symbol]) -> None:
         self._lock = threading.RLock()
@@ -103,7 +103,10 @@ class SymbolTable:
         return json.dumps(data, indent=2)
 
     def add(self, symbol: Symbol) -> None:
-        """Add a symbol, replacing the same address and removing the same name.
+        """Add a symbol, replacing the same ``(addr, overlay)`` and ``(name, overlay)``.
+
+        Symbols in other overlays are preserved, so the same address can carry
+        different names in overlays that share a base.
 
         Parameters:
             symbol (Symbol): The symbol to add.
@@ -112,7 +115,10 @@ class SymbolTable:
             self._symbols = [
                 current
                 for current in self._symbols
-                if current.addr != symbol.addr and current.name != symbol.name
+                if not (
+                    (current.addr == symbol.addr and current.overlay == symbol.overlay)
+                    or (current.name == symbol.name and current.overlay == symbol.overlay)
+                )
             ]
             self._symbols.append(symbol)
             self._symbols.sort(key=lambda item: item.addr)
@@ -126,36 +132,98 @@ class SymbolTable:
         for symbol in other.all():
             self.add(symbol)
 
-    def resolve(self, addr: int) -> Symbol | None:
-        """The symbol containing ``addr`` (largest address ≤ ``addr``), or None.
+    def replace_overlay(self, overlay: int, other: "SymbolTable") -> None:
+        """Replace only ``overlay``'s symbols with ``other`` (keeps the rest).
+
+        Parameters:
+            overlay (int): Overlay whose symbols are replaced.
+            other (SymbolTable): The new symbols for that overlay.
+        """
+        with self._lock:
+            self._symbols = [
+                symbol for symbol in self._symbols if symbol.overlay != overlay
+            ]
+            for symbol in other.all():
+                self.add(symbol)
+
+    def candidates(self, addr: int, overlay: int | None = None) -> list[Symbol]:
+        """Symbols at the nearest address ≤ ``addr``, optionally scoped to an overlay.
+
+        With ``overlay``, symbols from that overlay and globals (``overlay=None``)
+        are considered; a specific overlay wins over a global at the same address.
+        Without ``overlay``, all symbols at the address are returned, which may be
+        ambiguous when overlays share a base.
 
         Parameters:
             addr (int): The address to look up.
+            overlay (int | None): Optional overlay filter.
 
         Returns:
-            Symbol | None: The matching symbol, or None.
+            list[Symbol]: The matching symbols (empty if none).
         """
         with self._lock:
-            found: Symbol | None = None
-            for symbol in self._symbols:
-                if symbol.addr <= addr:
-                    found = symbol
-                else:
-                    break
-            return found
+            eligible = [
+                symbol
+                for symbol in self._symbols
+                if overlay is None
+                or symbol.overlay == overlay
+                or symbol.overlay is None
+            ]
+            max_addr: int | None = None
+            for symbol in eligible:
+                if symbol.addr <= addr and (max_addr is None or symbol.addr > max_addr):
+                    max_addr = symbol.addr
+            if max_addr is None:
+                return []
+            at_addr = [symbol for symbol in eligible if symbol.addr == max_addr]
+            if overlay is not None:
+                specific = [
+                    symbol for symbol in at_addr if symbol.overlay == overlay
+                ]
+                if specific:
+                    return specific
+                return [symbol for symbol in at_addr if symbol.overlay is None]
+            return at_addr
 
-    def by_name(self, name: str) -> Symbol | None:
-        """Return the symbol with exactly ``name``, if any."""
+    def resolve(self, addr: int, overlay: int | None = None) -> Symbol | None:
+        """The symbol at the nearest address ≤ ``addr``, or None when ambiguous.
+
+        Parameters:
+            addr (int): The address to look up.
+            overlay (int | None): Optional overlay filter.
+
+        Returns:
+            Symbol | None: The single matching symbol, or None if there is none or
+            more than one candidate at the nearest address.
+        """
+        candidates = self.candidates(addr, overlay)
+        return candidates[0] if len(candidates) == 1 else None
+
+    def by_name(self, name: str, overlay: int | None = None) -> Symbol | None:
+        """Return the symbol with exactly ``name``, optionally filtered by overlay."""
         with self._lock:
             for symbol in self._symbols:
-                if symbol.name == name:
+                if symbol.name != name:
+                    continue
+                if overlay is None or symbol.overlay in (overlay, None):
                     return symbol
             return None
 
-    def all(self) -> list[Symbol]:
-        """All symbols, ordered by address."""
+    def all(self, overlay: int | None = None) -> list[Symbol]:
+        """All symbols, ordered by address, optionally filtered by overlay.
+
+        Parameters:
+            overlay (int | None): When set, return only symbols from that overlay.
+
+        Returns:
+            list[Symbol]: The symbols.
+        """
         with self._lock:
-            return list(self._symbols)
+            if overlay is None:
+                return list(self._symbols)
+            return [
+                symbol for symbol in self._symbols if symbol.overlay == overlay
+            ]
 
     def __len__(self) -> int:
         with self._lock:

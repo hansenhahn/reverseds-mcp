@@ -131,9 +131,12 @@ def test_dma_source_tool(monkeypatch: pytest.MonkeyPatch) -> None:
 
         def symbols(self) -> object:
             class Table:
-                def resolve(self, addr: int) -> None:
+                def resolve(self, addr: int, overlay: int | None = None) -> None:
                     return None
             return Table()
+
+        def active_overlay(self, core: str = "arm9") -> int | None:
+            return None
 
     monkeypatch.setattr(re_tools, "DmaTrace", FakeTrace)
     monkeypatch.setattr(re_tools, "bridge", FakeBridge())

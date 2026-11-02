@@ -49,6 +49,9 @@ class FakeDebugger:
     def read_register(self, name: str) -> int:
         return self.pc if name == "pc" else 0
 
+    def core(self) -> str | None:
+        return "arm9"
+
     def remove(self, number: int) -> None: ...
 
     def read_memory(self, addr: int, size: int) -> bytes:
@@ -83,9 +86,13 @@ class FakeBridge:
         self.table = SymbolTable([])
         self.debugger_instance = FakeDebugger()
         self.decomp_instance = DecompSnippets(self.store)
+        self.active: int | None = None
 
     def symbols(self) -> SymbolTable:
         return self.table
+
+    def active_overlay(self, core: str = "arm9") -> int | None:
+        return self.active
 
     def add_symbol(self, symbol: Symbol) -> str:
         self.table.add(symbol)
@@ -213,3 +220,75 @@ def test_bridge_symbols_persist_across_instances(tmp_path: Path) -> None:
     assert (restored.name, restored.kind, restored.comment, restored.overlay) == (
         "desenha_painel", "function", "panel", 22,
     )
+
+
+def test_symbol_lookup_by_overlay_and_ambiguous(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same address in two overlays: explicit/active wins, no filter is ambiguous."""
+    bridge = FakeBridge()
+    bridge.table.add(Symbol(0x020A11C4, "fn_22", overlay=22))
+    bridge.table.add(Symbol(0x020A11C4, "fn_25", overlay=25))
+    monkeypatch.setattr(re_tools, "bridge", bridge)
+
+    ambiguous = re_tools.symbol_lookup(0x020A11C4)
+    assert ambiguous["ambiguous"] is True
+    assert {item["name"] for item in ambiguous["symbols"]} == {"fn_22", "fn_25"}
+
+    explicit = re_tools.symbol_lookup(0x020A11C4, overlay=25)
+    assert explicit["name"] == "fn_25" and explicit["ambiguous"] is False
+
+    bridge.active = 22
+    active = re_tools.symbol_lookup(0x020A11C4)
+    assert active["name"] == "fn_22"
+
+
+def test_symbol_list_filters_by_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`symbol_list` can list a single overlay."""
+    bridge = FakeBridge()
+    bridge.table.add(Symbol(0x100, "global"))
+    bridge.table.add(Symbol(0x200, "fn_22", overlay=22))
+    bridge.table.add(Symbol(0x300, "fn_25", overlay=25))
+    monkeypatch.setattr(re_tools, "bridge", bridge)
+    only_25 = re_tools.symbol_list(overlay=25)
+    assert [item["name"] for item in only_25["symbols"]] == ["fn_25"]
+    assert re_tools.symbol_list()["count"] == 3
+
+
+def test_symbol_load_tags_and_replaces_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`symbol_load` tags a .map with an overlay and can replace only that overlay."""
+    bridge = FakeBridge()
+    bridge.table.add(Symbol(0x100, "global"))
+    bridge.table.add(Symbol(0x200, "fn_22", overlay=22))
+    bridge.table.add(Symbol(0x300, "fn_25_old", overlay=25))
+    monkeypatch.setattr(re_tools, "bridge", bridge)
+    path = tmp_path / "overlay25.map"
+    path.write_text("0x300 fn_25_new\n0x400 fn_25_extra\n", encoding="utf-8")
+
+    out = re_tools.symbol_load(str(path), overlay=25)
+    assert out["ok"] is True and out["overlay"] == 25
+    assert bridge.table.resolve(0x300, 25) == Symbol(0x300, "fn_25_new", overlay=25)
+
+    out = re_tools.symbol_load(str(path), merge=False, overlay=25)
+    assert out["ok"] is True
+    assert bridge.table.resolve(0x200, 22) == Symbol(0x200, "fn_22", overlay=22)
+    assert bridge.table.resolve(0x100, 99) == Symbol(0x100, "global")
+    assert bridge.table.resolve(0x300, 25) == Symbol(0x300, "fn_25_new", overlay=25)
+
+
+def test_disassemble_uses_active_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`disassemble` annotates with the active overlay (and is null when ambiguous)."""
+    bridge = FakeBridge()
+    bridge.table.add(Symbol(0x02000000, "fn_22", overlay=22))
+    bridge.table.add(Symbol(0x02000000, "fn_25", overlay=25))
+    monkeypatch.setattr(debug_tools, "bridge", bridge)
+
+    bridge.active = 25
+    out = debug_tools.disassemble(0x02000000, count=1)
+    assert out["instructions"][0]["symbol"] == "fn_25"
+
+    bridge.active = None
+    out = debug_tools.disassemble(0x02000000, count=1)
+    assert out["instructions"][0]["symbol"] is None

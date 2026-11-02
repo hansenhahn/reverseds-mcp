@@ -44,6 +44,9 @@ class FakeHitBridge:
     def symbols(self) -> SymbolTable:
         return SymbolTable([Symbol(0x02001100, "foo")])
 
+    def active_overlay(self, core: str = "arm9") -> int | None:
+        return None
+
 
 def test_hit_log_read_formats_and_clears(monkeypatch: pytest.MonkeyPatch) -> None:
     """`hit_log_read` formats addresses and clears after a successful read."""
