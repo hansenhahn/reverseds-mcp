@@ -1,7 +1,17 @@
 """Application service: display→VRAM/RAM helpers over the Debugger port."""
-from ..domain.display import BgCell, BgLayer, ObjTileMapping, ScreenCell
+from ..domain.display import (
+    BgCell,
+    BgLayer,
+    ObjTileMapping,
+    ScreenCell,
+    rgb555,
+    tile_indices,
+)
 from ..domain.io import IoMap
 from .ports import Debugger
+from io import BytesIO
+
+from PIL import Image
 from .video import VideoReader
 
 _MAX_RAM = 0x400000
@@ -44,6 +54,125 @@ class DisplayReader:
             self._debugger.read_memory(info.entry_addr, size), "little"
         )
         return screen, layer.decode(info, entry)
+
+    def dump_bg_map(
+        self, engine: str, bg: int
+    ) -> tuple[dict, list[dict]]:
+        """Dump the full virtual BG map (text or affine) as cells.
+
+        Parameters:
+            engine (str): ``A`` or ``B``.
+            bg (int): BG layer 0..3.
+
+        Returns:
+            tuple[dict, list[dict]]: Map metadata and one entry per cell.
+
+        Raises:
+            ValueError: If the BG kind is not text/affine.
+        """
+        layer = self._bg_layer(engine, bg)
+        if layer.kind not in ("text", "affine"):
+            raise ValueError(
+                f"BG {bg} é {layer.kind}; dump_bg_map suporta text/affine nesta versão"
+            )
+        width, height = layer.map_size
+        cell_w, cell_h = width // 8, height // 8
+        entry_size = 2 if layer.kind == "text" else 1
+        map_data = self._debugger.read_memory(
+            layer.screen_base, cell_w * cell_h * entry_size
+        )
+        cells: list[dict] = []
+        for cy in range(cell_h):
+            for cx in range(cell_w):
+                info = layer.cell(cx * 8, cy * 8)
+                offset = info.entry_addr - layer.screen_base
+                entry = int.from_bytes(
+                    map_data[offset:offset + entry_size], "little"
+                )
+                cell = layer.decode(info, entry)
+                cells.append(
+                    {
+                        "cell_x": cx,
+                        "cell_y": cy,
+                        "entry": entry,
+                        "tile_index": cell.tile_index,
+                        "tile_addr": cell.tile_addr,
+                        "palette": cell.palette,
+                        "flip_h": cell.flip_h,
+                        "flip_v": cell.flip_v,
+                    }
+                )
+        meta = {
+            "engine": layer.engine,
+            "bg": layer.bg,
+            "kind": layer.kind,
+            "bpp": layer.bpp,
+            "width": width,
+            "height": height,
+            "cell_count": len(cells),
+            "screen_base": layer.screen_base,
+            "char_base": layer.char_base,
+            "palette_base": layer.palette_base,
+        }
+        return meta, cells
+
+    def render_bg_map(
+        self, engine: str, bg: int
+    ) -> tuple[bytes, dict]:
+        """Compose the full virtual BG map into a transparent PNG.
+
+        Parameters:
+            engine (str): ``A`` or ``B``.
+            bg (int): BG layer 0..3.
+
+        Returns:
+            tuple[bytes, dict]: PNG bytes and map metadata.
+
+        Raises:
+            ValueError: If the BG kind is not text/affine.
+        """
+        meta, cells = self.dump_bg_map(engine, bg)
+        bpp = meta["bpp"]
+        tile_size = 64 if bpp == 8 else 32
+        max_tile = max((cell["tile_index"] for cell in cells), default=0)
+        tile_data = self._debugger.read_memory(
+            meta["char_base"], (max_tile + 1) * tile_size
+        )
+        palette_data = self._debugger.read_memory(meta["palette_base"], 512)
+        palette = [
+            rgb555(int.from_bytes(palette_data[i * 2:i * 2 + 2], "little"))
+            for i in range(256)
+        ]
+        image = Image.new("RGBA", (meta["width"], meta["height"]), (0, 0, 0, 0))
+        pixels = image.load()
+        assert pixels is not None
+        for cell in cells:
+            offset = cell["tile_index"] * tile_size
+            tile = tile_data[offset:offset + tile_size]
+            if len(tile) < tile_size:
+                continue
+            rows = tile_indices(tile, bpp)
+            base_x = cell["cell_x"] * 8
+            base_y = cell["cell_y"] * 8
+            palette_index = cell["palette"] if bpp == 4 else None
+            for y in range(8):
+                for x in range(8):
+                    sx = 7 - x if cell["flip_h"] else x
+                    sy = 7 - y if cell["flip_v"] else y
+                    index = rows[sy][sx]
+                    if index == 0:
+                        pixels[base_x + x, base_y + y] = (0, 0, 0, 0)
+                        continue
+                    color_index = (
+                        (palette_index or 0) * 16 + index
+                        if bpp == 4
+                        else index
+                    )
+                    red, green, blue = palette[color_index % 256]
+                    pixels[base_x + x, base_y + y] = (red, green, blue, 255)
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue(), meta
 
     def tile_bytes(
         self,

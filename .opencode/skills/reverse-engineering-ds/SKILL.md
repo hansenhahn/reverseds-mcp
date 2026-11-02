@@ -101,7 +101,9 @@ DISPCNT/BGxCNT/scroll/brightness; `io_read` decodes scroll/window/mosaic/blend
 I/O); `vram_layout()` gives the real bank mapping (VRAMCNT is write-only on
 hardware, but the emulator exposes it). `cell_at_screen(engine, bg, x, y)` maps a
 screen pixel to the BG cell using scroll, and `render_layer(..., highlight=[x,y])`
-draws an 8×8 box on that cell.
+draws an 8×8 box on that cell. For the full virtual map, use
+`dump_tilemap(engine, bg)` (JSON) and `render_bg_map(engine, bg)` (PNG; text/affine,
+4/8bpp, transparent index 0).
 
 Hand-composing tiles/sprites/palettes is guesswork; the renderer is ground truth.
 Only fall back to manual decoding to extract a raw asset for offline tools.
