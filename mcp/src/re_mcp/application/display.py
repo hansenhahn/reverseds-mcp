@@ -1,5 +1,5 @@
 """Application service: display→VRAM/RAM helpers over the Debugger port."""
-from ..domain.display import BgCell, BgLayer, ObjTileMapping
+from ..domain.display import BgCell, BgLayer, ObjTileMapping, ScreenCell
 from ..domain.io import IoMap
 from .ports import Debugger
 from .video import VideoReader
@@ -18,7 +18,11 @@ class DisplayReader:
     def _bg_layer(self, engine: str, bg: int) -> BgLayer:
         key = engine.upper()
         state = self._video.state(key)
-        return BgLayer.from_registers(key, bg, state.dispcnt.raw, state.bgs[bg].raw)
+        hofs = state.scrolls[bg][0].raw if state.scrolls else 0
+        vofs = state.scrolls[bg][1].raw if state.scrolls else 0
+        return BgLayer.from_registers(
+            key, bg, state.dispcnt.raw, state.bgs[bg].raw, hofs, vofs
+        )
 
     def map_cell(self, engine: str, bg: int, x: int, y: int) -> BgCell:
         """Resolve a BG cell to its map entry, tile index/address and palette."""
@@ -27,6 +31,19 @@ class DisplayReader:
         size = 2 if info.kind == "text" else 1
         entry = int.from_bytes(self._debugger.read_memory(info.entry_addr, size), "little")
         return layer.decode(info, entry)
+
+    def cell_at_screen(
+        self, engine: str, bg: int, x: int, y: int
+    ) -> tuple[ScreenCell, BgCell]:
+        """Resolve a screen pixel to the BG cell (text BG, with scroll)."""
+        layer = self._bg_layer(engine, bg)
+        screen = layer.cell_from_screen(x, y)
+        info = screen.info
+        size = 2 if info.kind == "text" else 1
+        entry = int.from_bytes(
+            self._debugger.read_memory(info.entry_addr, size), "little"
+        )
+        return screen, layer.decode(info, entry)
 
     def tile_bytes(
         self,

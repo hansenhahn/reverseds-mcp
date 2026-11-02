@@ -27,6 +27,22 @@ class BgCellInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class ScreenCell:
+    """A screen pixel's BG cell, including map coordinates and the scroll used."""
+
+    info: BgCellInfo
+    screen_x: int
+    screen_y: int
+    screen_cell_x: int
+    screen_cell_y: int
+    screen_rect: tuple[int, int, int, int]
+    map_x: int
+    map_y: int
+    hofs: int
+    vofs: int
+
+
+@dataclass(frozen=True, slots=True)
 class BgCell:
     """A decoded BG map cell."""
 
@@ -59,18 +75,26 @@ class BgLayer:
     bg: int
     dispcnt: int
     bgcnt: int
+    hofs: int = 0
+    vofs: int = 0
 
     @classmethod
     def from_registers(
-        cls, engine: str, bg: int, dispcnt: int, bgcnt: int
+        cls,
+        engine: str,
+        bg: int,
+        dispcnt: int,
+        bgcnt: int,
+        hofs: int = 0,
+        vofs: int = 0,
     ) -> "BgLayer":
-        """Build a layer from the raw DISPCNT/BGxCNT values."""
+        """Build a layer from the raw DISPCNT/BGxCNT/scroll values."""
         key = engine.upper()
         if key not in ("A", "B"):
             raise ValueError("engine deve ser 'A' ou 'B'")
         if not 0 <= bg <= 3:
             raise ValueError("bg deve ser 0..3")
-        return cls(key, bg, dispcnt, bgcnt)
+        return cls(key, bg, dispcnt, bgcnt, hofs, vofs)
 
     @property
     def kind(self) -> str:
@@ -125,6 +149,50 @@ class BgLayer:
         if self.kind == "affine":
             return 8
         return 8 if (self.bgcnt & (1 << 7)) else 4
+
+    def cell_from_screen(self, screen_x: int, screen_y: int) -> ScreenCell:
+        """Resolve a screen pixel to the BG cell, applying the layer scroll.
+
+        ``screen_x``/``screen_y`` are in the engine's 256×192 screen space. The
+        scroll is applied modulo the map size; only text backgrounds are supported
+        in this version (affine/rotation is a follow-up).
+
+        Parameters:
+            screen_x (int): Screen X (0..255).
+            screen_y (int): Screen Y (0..191).
+
+        Returns:
+            ScreenCell: The map cell info, screen rectangle and scroll used.
+
+        Raises:
+            ValueError: If the coordinate is out of the screen or the BG is not text.
+        """
+        if not 0 <= screen_x < 256 or not 0 <= screen_y < 192:
+            raise ValueError("coordenada de tela deve estar em 0..255 / 0..191")
+        kind = self.kind
+        if kind != "text":
+            raise ValueError(
+                f"BG {self.bg} é {kind}; cell_from_screen suporta text nesta versão "
+                "(affine/rotation é follow-up)"
+            )
+        width, height = self.map_size
+        map_x = (screen_x + self.hofs) % width
+        map_y = (screen_y + self.vofs) % height
+        info = self.cell(map_x, map_y)
+        screen_cell_x = screen_x // 8
+        screen_cell_y = screen_y // 8
+        return ScreenCell(
+            info=info,
+            screen_x=screen_x,
+            screen_y=screen_y,
+            screen_cell_x=screen_cell_x,
+            screen_cell_y=screen_cell_y,
+            screen_rect=(screen_cell_x * 8, screen_cell_y * 8, 8, 8),
+            map_x=map_x,
+            map_y=map_y,
+            hofs=self.hofs,
+            vofs=self.vofs,
+        )
 
     def cell(self, x: int, y: int) -> BgCellInfo:
         """Locate the map entry of the cell at pixel ``(x, y)``."""

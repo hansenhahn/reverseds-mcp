@@ -23,6 +23,7 @@ class VideoState:
     dispcnt: DecodedRegister
     bgs: tuple[DecodedRegister, ...]
     master_bright: DecodedRegister
+    scrolls: tuple[tuple[DecodedRegister, DecodedRegister], ...] = ()
 
 
 class VideoReader:
@@ -57,10 +58,17 @@ class VideoReader:
         dispcnt = self._decode(base, 4)
         bgs = tuple(self._decode(base + 8 + 2 * i, 2) for i in range(4))
         master_bright = self._decode(base + 0x6C, 2)
+        scrolls = tuple(
+            (
+                self._decode(base + 0x10 + 4 * i, 2),
+                self._decode(base + 0x12 + 4 * i, 2),
+            )
+            for i in range(4)
+        )
         swap = {f.name: f.value for f in self._decode(_POWCNT1, 2).fields}["display_swap"]
         top_engine = "A" if swap else "B"
         screen = "top" if key == top_engine else "bottom"
-        return VideoState(key, screen, dispcnt, bgs, master_bright)
+        return VideoState(key, screen, dispcnt, bgs, master_bright, scrolls)
 
     def vram_layout(self) -> list[VramBinding]:
         """Read the current ``VRAMCNT`` bytes and resolve the bank→window layout.

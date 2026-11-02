@@ -7,6 +7,7 @@ from ..application.patches import PatchComparer
 from ..application.snapshots import SnapshotError
 from ..application.watchpoints import Watchpoints
 from ..domain.addresses import AddressSpace
+from ..domain.display import BgCell
 from ..domain.contract import Contract
 from ..domain.patch import Patch
 from ..domain.symbols import Symbol, SymbolTable
@@ -507,6 +508,29 @@ def diff_patch(asm_patch: list[dict], c_equiv: list[dict]) -> dict:
     }
 
 
+def _cell_dict(cell: BgCell) -> dict:
+    """Serialize a decoded BG cell."""
+    return {
+        "engine": cell.engine,
+        "bg": cell.bg,
+        "kind": cell.kind,
+        "x": cell.x,
+        "y": cell.y,
+        "cell": [cell.cell_x, cell.cell_y],
+        "entry_addr": f"0x{cell.entry_addr:08x}",
+        "entry": f"0x{cell.entry:04x}",
+        "tile_index": cell.tile_index,
+        "tile_addr": f"0x{cell.tile_addr:08x}",
+        "palette": cell.palette,
+        "bpp": cell.bpp,
+        "flip_h": cell.flip_h,
+        "flip_v": cell.flip_v,
+        "char_base": f"0x{cell.char_base:08x}",
+        "screen_base": f"0x{cell.screen_base:08x}",
+        "map_size": [cell.map_width, cell.map_height],
+    }
+
+
 @mcp.tool()
 def map_cell(engine: str = "A", bg: int = 0, x: int = 0, y: int = 0) -> dict:
     """Resolve a BG cell to its map entry, tile index and tile address.
@@ -528,25 +552,47 @@ def map_cell(engine: str = "A", bg: int = 0, x: int = 0, y: int = 0) -> dict:
         return debug_error(exc)
     except ValueError as exc:
         return error(exc, "Confira engine/BG e coordenadas; só text/affine são suportados.")
-    return {
-        "engine": cell.engine,
-        "bg": cell.bg,
-        "kind": cell.kind,
-        "x": cell.x,
-        "y": cell.y,
-        "cell": [cell.cell_x, cell.cell_y],
-        "entry_addr": f"0x{cell.entry_addr:08x}",
-        "entry": f"0x{cell.entry:04x}",
-        "tile_index": cell.tile_index,
-        "tile_addr": f"0x{cell.tile_addr:08x}",
-        "palette": cell.palette,
-        "bpp": cell.bpp,
-        "flip_h": cell.flip_h,
-        "flip_v": cell.flip_v,
-        "char_base": f"0x{cell.char_base:08x}",
-        "screen_base": f"0x{cell.screen_base:08x}",
-        "map_size": [cell.map_width, cell.map_height],
-    }
+    return _cell_dict(cell)
+
+
+@mcp.tool()
+def cell_at_screen(engine: str = "A", bg: int = 0, x: int = 0, y: int = 0) -> dict:
+    """Resolve a screen pixel to its BG cell, applying the layer scroll.
+
+    ``x``/``y`` are in the engine's 256×192 screen space. Only text BGs are
+    supported in this version; affine/rotation returns a clear error.
+
+    Parameters:
+        engine (str): ``A`` or ``B``.
+        bg (int): BG layer 0..3.
+        x (int): Screen X (0..255).
+        y (int): Screen Y (0..191).
+
+    Returns:
+        dict: The cell plus ``screen_rect``/``map``/``scroll``, or an error.
+    """
+    try:
+        screen, cell = DisplayReader(
+            bridge.debugger(), bridge.io_map()
+        ).cell_at_screen(engine, bg, x, y)
+    except DebugError as exc:
+        return debug_error(exc)
+    except ValueError as exc:
+        return error(
+            exc, "Use BG text e coordenadas 0..255/0..191; affine/rotation é follow-up."
+        )
+    out = _cell_dict(cell)
+    out.update(
+        {
+            "screen_x": screen.screen_x,
+            "screen_y": screen.screen_y,
+            "screen_cell": [screen.screen_cell_x, screen.screen_cell_y],
+            "screen_rect": list(screen.screen_rect),
+            "map": [screen.map_x, screen.map_y],
+            "scroll": {"hofs": screen.hofs, "vofs": screen.vofs},
+        }
+    )
+    return out
 
 
 @mcp.tool()

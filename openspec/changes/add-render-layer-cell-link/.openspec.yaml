@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-02
+goal: Correlacionar pixel da tela -> celula/tile, usando scroll do BG, e
+  destacar a celula no render_layer.

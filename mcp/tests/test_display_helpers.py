@@ -5,6 +5,7 @@ from typing import cast
 import pytest
 
 from re_mcp.application.display import DisplayReader
+from re_mcp.application.video import VideoReader
 from re_mcp.application.ports import Debugger
 from re_mcp.domain.display import BgLayer, ObjTileMapping
 from re_mcp.domain.io import IoMap, DmaTransfer
@@ -144,3 +145,95 @@ def test_dma_source_tool(monkeypatch: pytest.MonkeyPatch) -> None:
     assert out["count"] == 1
     assert out["hits"][0]["cpu"] == "arm9"
     assert out["hits"][0]["pc"] == "0x01ff860c"
+
+
+def test_cell_from_screen_scroll_and_wrap() -> None:
+    """Screen→map applies scroll and wraps inside the map size."""
+    layer = BgLayer.from_registers("B", 0, 0, 0, hofs=0x10, vofs=0x20)
+    screen = layer.cell_from_screen(0, 0)
+    assert (screen.map_x, screen.map_y) == (0x10, 0x20)
+    assert screen.screen_rect == (0, 0, 8, 8)
+    assert screen.info.entry_addr == 0x06200000 + (0x20 // 8 * 32 + 0x10 // 8) * 2
+
+    wrapped = BgLayer.from_registers("B", 0, 0, 0, hofs=0xF8, vofs=0xF0)
+    screen = wrapped.cell_from_screen(16, 16)
+    assert (screen.map_x, screen.map_y) == (8, 0)
+
+
+def test_cell_from_screen_rejects_non_text() -> None:
+    """Affine BGs are not supported by the screen→cell MVP."""
+    layer = BgLayer.from_registers("A", 2, 2, 0)
+    with pytest.raises(ValueError):
+        layer.cell_from_screen(0, 0)
+
+
+def test_display_reader_cell_at_screen() -> None:
+    """The reader resolves the map entry for a screen pixel."""
+    debugger = FakeDebugger(_memory())
+    reader = DisplayReader(cast(Debugger, debugger), IoMap.default())
+    screen, cell = reader.cell_at_screen("B", 0, 0, 0)
+    assert (screen.map_x, screen.map_y) == (0, 0)
+    assert (cell.tile_index, cell.tile_addr) == (0x223, 0x06204460)
+
+
+def test_cell_at_screen_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`cell_at_screen` serializes the cell, screen rect and scroll."""
+    debugger = FakeDebugger(_memory())
+
+    class FakeBridge:
+        def debugger(self) -> FakeDebugger:
+            return debugger
+
+        def io_map(self) -> IoMap:
+            return IoMap.default()
+
+    monkeypatch.setattr(re_tools, "bridge", FakeBridge())
+    out = re_tools.cell_at_screen("B", 0, 0, 0)
+    assert out["tile_index"] == 0x223
+    assert out["map"] == [0, 0]
+    assert out["screen_rect"] == [0, 0, 8, 8]
+    assert out["scroll"] == {"hofs": 0, "vofs": 0}
+
+
+def test_render_layer_highlight(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """`render_layer` draws the 8x8 highlight on the engine's screen PNG."""
+    from PIL import Image
+    from re_mcp.tools import video as video_tools
+
+    debugger = FakeDebugger(_memory())
+
+    class FakeBridge:
+        def debugger(self) -> FakeDebugger:
+            return debugger
+
+        def io_map(self) -> IoMap:
+            return IoMap.default()
+
+    png = tmp_path / "layer.png"
+    Image.new("RGBA", (256, 192), (0, 0, 0, 255)).save(png)
+
+    monkeypatch.setattr(video_tools, "bridge", FakeBridge())
+    monkeypatch.setattr(video_tools, "control_call", lambda *a, **k: {})
+    monkeypatch.setattr(
+        video_tools,
+        "save_framebuffer_pngs",
+        lambda *a, **k: {"paths": [str(png)]},
+    )
+    out = video_tools.render_layer(
+        "B", "bg0", "top", highlight=[0, 0]
+    )
+    assert out["screen"] == "top"
+    assert out["cell"]["tile_index"] == 0x223
+    pixel = Image.open(png).convert("RGBA").getpixel((0, 0))
+    assert pixel == (255, 0, 0, 255)
+
+
+def test_video_state_includes_scroll() -> None:
+    """`VideoReader.state` exposes BGxHOFS/VOFS per BG."""
+    memory = _memory()
+    memory[0x04001010] = (0x10).to_bytes(2, "little")
+    memory[0x04001012] = (0x20).to_bytes(2, "little")
+    state = VideoReader(cast(Debugger, FakeDebugger(memory)), IoMap.default()).state("B")
+    assert len(state.scrolls) == 4
+    assert (state.scrolls[0][0].raw, state.scrolls[0][1].raw) == (0x10, 0x20)
+    assert (state.scrolls[1][0].raw, state.scrolls[1][1].raw) == (0, 0)
