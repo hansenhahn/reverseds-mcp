@@ -85,3 +85,10 @@ def test_lists_display_helpers() -> None:
     names = asyncio.run(_list_tools())
     for tool in ("map_cell", "vram_tile_bytes", "find_tile_in_ram", "dma_source"):
         assert tool in names
+
+
+def test_lists_overlay_resolution_tools() -> None:
+    """Overlay candidates/details/selection tools are exposed."""
+    names = asyncio.run(_list_tools())
+    for tool in ("overlay_for_address", "overlay_details", "overlay_select"):
+        assert tool in names

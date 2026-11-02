@@ -1,9 +1,10 @@
 """Tool-level tests for Wave 0 (slots, addr_valid, normalized echo)."""
 import pytest
 
+from re_mcp.application.overlays import OverlayResolver
 from re_mcp.domain.debug import Breakpoint
 from re_mcp.domain.symbols import SymbolTable
-from re_mcp.domain.overlays import Overlay, OverlayHit
+from re_mcp.domain.overlays import Overlay, OverlayDetails, OverlayHit
 from re_mcp.infra.ndsrom import NdsRomError
 from re_mcp.tools import debug as debug_tools
 from re_mcp.tools import re as re_tools
@@ -45,6 +46,17 @@ class FakeOverlays:
     def overlay_for_address(self, addr: int, core: str = "arm9") -> OverlayHit | None:
         return self._hit
 
+    def overlay_list(self, core: str) -> list[Overlay]:
+        return [self._hit.overlay] if self._hit is not None and core == "arm9" else []
+
+    def overlay_candidates(self, addr: int, core: str = "arm9") -> list[OverlayHit]:
+        return [self._hit] if self._hit is not None else []
+
+    def overlay_details(self, index: int, core: str = "arm9") -> OverlayDetails:
+        if self._hit is None:
+            raise NdsRomError("overlay não encontrado")
+        return OverlayDetails(self._hit.overlay, 0, self._hit.overlay.ram_size, False, 0)
+
 
 class FakeBridge:
     """Minimal bridge for tool tests."""
@@ -69,6 +81,9 @@ class FakeBridge:
 
     def symbols(self) -> SymbolTable:
         return SymbolTable([])
+
+    def overlay_resolver(self) -> OverlayResolver:
+        return OverlayResolver(self.overlays())
 
 
 def test_debug_slots_tool(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -125,8 +140,16 @@ def test_addr_valid_resolves_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
         "ram_size": 0x20000,
         "bss_size": 0,
         "file_id": 123,
+        "sinit_start": 0,
+        "sinit_end": 0,
+        "flags": 0,
+        "compressed_size": 0,
         "offset": 0x1E864,
+        "offset_file": 0x1E864,
+        "offset_code": None,
     }
+    assert out["ambiguous"] is False
+    assert len(out["overlays"]) == 1
 
 
 def test_addr_valid_unmapped_is_not_an_error(monkeypatch: pytest.MonkeyPatch) -> None:

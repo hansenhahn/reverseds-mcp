@@ -3,7 +3,7 @@ import os
 
 from ..application.cart_trace import CartTrace, TraceError
 from ..domain.cartfs import NdsHeader
-from ..domain.overlays import Overlay, OverlayHit
+from ..domain.overlays import Overlay, OverlayDetails, OverlayHit
 from ..infra.control import ControlError
 from ..infra.gdb import DebugError
 from ..infra.ndsrom import NdsRomError
@@ -86,17 +86,42 @@ def _header_dict(header: NdsHeader) -> dict:
 
 
 def _overlay_hit_dict(hit: OverlayHit) -> dict:
-    """Serialize an overlay hit with its offset."""
-    return {**_overlay_dict(hit.overlay), "offset": hit.offset}
+    """Serialize an overlay hit with its file/code offsets."""
+    return {
+        **_overlay_dict(hit.overlay),
+        "offset": hit.offset_file,
+        "offset_file": hit.offset_file,
+        "offset_code": hit.offset_code,
+    }
+
+
+def _overlay_details_dict(details: OverlayDetails) -> dict:
+    """Serialize an overlay's y9/FAT/compression details."""
+    return {
+        **_overlay_dict(details.overlay),
+        "file_offset": details.file_offset,
+        "file_size": details.file_size,
+        "compressed": details.compressed,
+        "compressed_size": details.compressed_size,
+        "code_base": details.code_base,
+        "prefix_size": details.prefix_size,
+    }
 
 
 @mcp.tool()
-def rom_details() -> dict:
+def rom_details(
+    overlay: int | None = None, code_base: int | None = None
+) -> dict:
     """Return full details of the ROM loaded in the emulator.
 
     Reads the full header over the control channel and derives the NitroFS file
     count and overlay counts. When the debugger is connected, includes the
-    current core, PC and overlay at the PC; otherwise ``runtime`` is null.
+    current core, PC and the overlay candidates at the PC; otherwise ``runtime``
+    is null.
+
+    Parameters:
+        overlay (int | None): Explicit overlay ID for the runtime resolution.
+        code_base (int | None): Optional overlay code base (for ``offset_code``).
 
     Returns:
         dict: ``{"loaded", "identity", "header", "derived", "runtime"}`` or
@@ -121,14 +146,26 @@ def rom_details() -> dict:
         core = debugger.core()
         if core:
             pc = debugger.read_register("pc")
-            hit = overlays.overlay_for_address(pc, core)
+            resolution = bridge.overlay_resolver().resolve(
+                pc, core, overlay, code_base
+            )
             runtime = {
                 "core": core,
                 "pc": f"0x{pc:08x}",
-                "overlay": _overlay_hit_dict(hit) if hit else None,
+                "overlays": [
+                    _overlay_hit_dict(hit) for hit in resolution.candidates
+                ],
+                "overlay": (
+                    _overlay_hit_dict(resolution.selected)
+                    if resolution.selected
+                    else None
+                ),
+                "ambiguous": resolution.ambiguous,
             }
     except DebugError:
         runtime = None
+    except ValueError as exc:
+        return error(exc, "code_base deve estar dentro do intervalo da overlay.")
 
     return {
         "loaded": True,
@@ -242,6 +279,10 @@ def _overlay_dict(overlay: Overlay) -> dict:
         "ram_size": overlay.ram_size,
         "bss_size": overlay.bss_size,
         "file_id": overlay.file_id,
+        "sinit_start": overlay.sinit_start,
+        "sinit_end": overlay.sinit_end,
+        "flags": overlay.flags,
+        "compressed_size": overlay.compressed_size,
     }
 
 
@@ -265,21 +306,114 @@ def overlay_list(core: str | None = None) -> dict:
 
 
 @mcp.tool()
-def overlay_for_address(addr: int, core: str = "arm9") -> dict:
-    """Resolve a RAM address to the overlay that contains it.
+def overlay_for_address(
+    addr: int,
+    core: str = "arm9",
+    overlay: int | None = None,
+    code_base: int | None = None,
+) -> dict:
+    """Resolve a RAM address to all overlay candidates.
+
+    Overlays may share a ``ram_address``; the tool returns every candidate and
+    flags ambiguity instead of silently picking the first. ``overlay`` selects
+    one explicitly; otherwise the active ``overlay_select`` selection is used.
 
     Parameters:
         addr (int): RAM address.
         core (str): ``arm9`` or ``arm7``.
+        overlay (int | None): Explicit overlay ID for the selected hit.
+        code_base (int | None): Optional overlay code base (for ``offset_code``).
 
     Returns:
-        dict: ``{"overlay": {...}, "offset"}`` or ``{"overlay": None}``.
+        dict: Candidates, selected overlay, ambiguity and offsets.
     """
     try:
         bridge.refresh_rom()
-        hit = bridge.overlays().overlay_for_address(addr, core)
+        resolution = bridge.overlay_resolver().resolve(
+            addr, core, overlay, code_base
+        )
     except (NdsRomError, ControlError) as exc:
         return _rom_error(exc)
-    if hit is None:
-        return {"overlay": None}
-    return {"overlay": _overlay_dict(hit.overlay), "offset": hit.offset}
+    except ValueError as exc:
+        return error(exc, "code_base deve estar dentro do intervalo da overlay.")
+    selected = resolution.selected
+    return {
+        "found": bool(resolution.candidates),
+        "ambiguous": resolution.ambiguous,
+        "overlays": [_overlay_hit_dict(hit) for hit in resolution.candidates],
+        "overlay": _overlay_hit_dict(selected) if selected else None,
+        "offset": selected.offset_file if selected else None,
+        "offset_file": selected.offset_file if selected else None,
+        "offset_code": selected.offset_code if selected else None,
+        "code_base": resolution.code_base,
+        "prefix_size": resolution.prefix_size,
+    }
+
+
+@mcp.tool()
+def overlay_details(
+    index: int, core: str = "arm9", code_base: int | None = None
+) -> dict:
+    """Return y9/FAT/compression details of an overlay.
+
+    Parameters:
+        index (int): Overlay ID.
+        core (str): ``arm9`` or ``arm7``.
+        code_base (int | None): Optional address where the overlay code starts.
+
+    Returns:
+        dict: y9 fields + ``file_offset``/``file_size`` + compression + optional
+        ``code_base``/``prefix_size``, or ``{"error", "hint"?}``.
+    """
+    try:
+        bridge.refresh_rom()
+        details = bridge.overlay_resolver().details(index, core, code_base)
+    except NdsRomError as exc:
+        return error(
+            exc, "Confira o índice em overlay_list; a ROM precisa ter overlay/FAT."
+        )
+    except ControlError as exc:
+        return _rom_error(exc)
+    except ValueError as exc:
+        return error(exc, "code_base deve estar dentro do intervalo da overlay.")
+    return _overlay_details_dict(details)
+
+
+@mcp.tool()
+def overlay_select(
+    index: int | None = None, core: str = "arm9", code_base: int | None = None
+) -> dict:
+    """Select (or clear) the overlay considered resident for subsequent queries.
+
+    This is MCP session state; it does not prove residency and does not change
+    the emulator. Use ``overlay_select(None)`` to clear.
+
+    Parameters:
+        index (int | None): Overlay ID, or None to clear.
+        core (str): ``arm9`` or ``arm7``.
+        code_base (int | None): Optional address where the overlay code starts.
+
+    Returns:
+        dict: ``{"core", "overlay", "code_base", "prefix_size"}`` or
+        ``{"error", "hint"?}``.
+    """
+    if index is None:
+        bridge.clear_overlay(core)
+        return {"core": core, "overlay": None, "code_base": None, "prefix_size": None}
+    try:
+        bridge.refresh_rom()
+        details = bridge.overlay_resolver().select(index, core, code_base)
+    except NdsRomError as exc:
+        return error(
+            exc, "Confira o índice em overlay_list; a ROM precisa ter overlay/FAT."
+        )
+    except ControlError as exc:
+        return _rom_error(exc)
+    except ValueError as exc:
+        return error(exc, "code_base deve estar dentro do intervalo da overlay.")
+    return {
+        "core": core,
+        "overlay": index,
+        "code_base": details.code_base if details else None,
+        "prefix_size": details.prefix_size if details else None,
+    }

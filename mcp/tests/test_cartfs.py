@@ -206,3 +206,17 @@ def test_parse_full_header() -> None:
     assert header.fnt_offset == 0x10000
     assert (header.secure_area_crc, header.secure_area_delay) == (0x1234, 0x051E)
     assert (header.logo_crc, header.header_crc) == (0xCF56, 0xABCD)
+
+
+def test_channelrom_overlay_candidates_and_details(tmp_path: Path) -> None:
+    """The adapter resolves overlay candidates and enriches details from the FAT."""
+    rom = ChannelRom(FakeChannel(_rom(tmp_path / "ovl.bin").read_bytes()))
+    rom.refresh()
+    hits = rom.overlay_candidates(0x02000010)
+    assert [(hit.overlay.index, hit.offset_file) for hit in hits] == [(0, 0x10)]
+    details = rom.overlay_details(0)
+    assert (details.file_offset, details.file_size) == (0x200, 8)
+    assert details.compressed is True
+    assert details.compressed_size == 0
+    with pytest.raises(NdsRomError):
+        rom.overlay_details(99)

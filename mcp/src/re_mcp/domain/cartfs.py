@@ -293,6 +293,20 @@ class NdsFs:
         entry = self._by_path.get(path)
         return self._fat.span(entry.file_id) if entry is not None else None
 
+    def span_by_id(self, file_id: int) -> FatEntry | None:
+        """The range of a file by FAT id, or None if the id does not exist.
+
+        Parameters:
+            file_id (int): The id in the FAT.
+
+        Returns:
+            FatEntry | None: The range, or None.
+        """
+        try:
+            return self._fat.span(file_id)
+        except KeyError:
+            return None
+
     def file_for_offset(self, offset: int) -> str | None:
         """The path of the file containing ``offset``, or None.
 

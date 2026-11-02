@@ -3,8 +3,10 @@ import struct
 
 import pytest
 
+from re_mcp.application.overlays import OverlayResolver
 from re_mcp.domain.cartfs import NdsHeader, RomInfo
-from re_mcp.domain.overlays import Overlay, OverlayHit
+from re_mcp.domain.overlays import Overlay, OverlayDetails, OverlayHit
+from re_mcp.infra.ndsrom import NdsRomError
 from re_mcp.tools import cart as cart_tools
 
 
@@ -44,11 +46,23 @@ OVERLAY = Overlay("arm9", 22, 0x02082960, 0x20000, 0, 22)
 
 
 class FakeOverlays:
+    def __init__(self, hits: list[OverlayHit] | None = None) -> None:
+        self._hits = hits if hits is not None else [OverlayHit(OVERLAY, 0x1E864)]
+
     def overlay_list(self, core: str) -> list[Overlay]:
-        return [OVERLAY] if core == "arm9" else []
+        return [hit.overlay for hit in self._hits] if core == "arm9" else []
 
     def overlay_for_address(self, addr: int, core: str = "arm9") -> OverlayHit | None:
-        return OverlayHit(OVERLAY, 0x1E864) if core == "arm9" else None
+        return self._hits[0] if core == "arm9" and self._hits else None
+
+    def overlay_candidates(self, addr: int, core: str = "arm9") -> list[OverlayHit]:
+        return list(self._hits) if core == "arm9" else []
+
+    def overlay_details(self, index: int, core: str = "arm9") -> OverlayDetails:
+        for hit in self._hits:
+            if hit.overlay.index == index:
+                return OverlayDetails(hit.overlay, 0x3B600, 0x8EA0, True, 0x8EA0)
+        raise NdsRomError("overlay não encontrado")
 
 
 class FakeDebugger:
@@ -63,9 +77,15 @@ class FakeDebugger:
 
 
 class FakeBridge:
-    def __init__(self, loaded: bool = True, core: str | None = "arm9") -> None:
+    def __init__(
+        self,
+        loaded: bool = True,
+        core: str | None = "arm9",
+        overlays: FakeOverlays | None = None,
+    ) -> None:
         self.loaded = loaded
         self.debugger_instance = FakeDebugger(core)
+        self._overlays = overlays
 
     def rom_info(self) -> RomInfo:
         if not self.loaded:
@@ -76,10 +96,13 @@ class FakeBridge:
         return FakeCart()
 
     def overlays(self) -> FakeOverlays:
-        return FakeOverlays()
+        return self._overlays or FakeOverlays()
 
     def debugger(self) -> FakeDebugger:
         return self.debugger_instance
+
+    def overlay_resolver(self) -> OverlayResolver:
+        return OverlayResolver(self.overlays())
 
 
 def test_rom_details_header_and_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -93,13 +116,18 @@ def test_rom_details_header_and_runtime(monkeypatch: pytest.MonkeyPatch) -> None
     assert out["header"]["fnt"]["offset"] == 0x10000
     assert out["header"]["header_crc"] == 0xABCD
     assert out["derived"] == {"file_count": 1596, "arm9_overlays": 1, "arm7_overlays": 0}
+    hit = {
+        "core": "arm9", "index": 22, "ram_address": 0x02082960,
+        "ram_size": 0x20000, "bss_size": 0, "file_id": 22,
+        "sinit_start": 0, "sinit_end": 0, "flags": 0, "compressed_size": 0,
+        "offset": 0x1E864, "offset_file": 0x1E864, "offset_code": None,
+    }
     assert out["runtime"] == {
         "core": "arm9",
         "pc": "0x020a11c4",
-        "overlay": {
-            "core": "arm9", "index": 22, "ram_address": 0x02082960,
-            "ram_size": 0x20000, "bss_size": 0, "file_id": 22, "offset": 0x1E864,
-        },
+        "overlays": [hit],
+        "overlay": hit,
+        "ambiguous": False,
     }
 
 
@@ -115,3 +143,14 @@ def test_rom_details_without_rom(monkeypatch: pytest.MonkeyPatch) -> None:
     """Without a loaded ROM, the tool says so."""
     monkeypatch.setattr(cart_tools, "bridge", FakeBridge(loaded=False))
     assert cart_tools.rom_details() == {"loaded": False}
+
+
+def test_rom_details_ambiguous_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With a shared base and no selection, runtime does not pick the first match."""
+    other = Overlay("arm9", 25, 0x02082960, 0x32DE0, 0x40, 25)
+    hits = [OverlayHit(OVERLAY, 0x1E864), OverlayHit(other, 0x1E864)]
+    monkeypatch.setattr(cart_tools, "bridge", FakeBridge(overlays=FakeOverlays(hits)))
+    out = cart_tools.rom_details()
+    assert out["runtime"]["ambiguous"] is True
+    assert out["runtime"]["overlay"] is None
+    assert [item["index"] for item in out["runtime"]["overlays"]] == [22, 25]

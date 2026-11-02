@@ -4,7 +4,9 @@ from pathlib import Path
 import pytest
 
 from re_mcp.application.decomp import DecompSnippets
+from re_mcp.application.overlays import OverlayResolver
 from re_mcp.domain.debug import StackFrame
+from re_mcp.domain.overlays import Overlay, OverlayDetails, OverlayHit
 from re_mcp.domain.symbols import Symbol, SymbolTable
 from re_mcp.tools import debug as debug_tools
 from re_mcp.tools import re as re_tools
@@ -63,6 +65,15 @@ class FakeOverlays:
     def overlay_for_address(self, addr: int, core: str = "arm9") -> None:
         return None
 
+    def overlay_list(self, core: str) -> list[Overlay]:
+        return []
+
+    def overlay_candidates(self, addr: int, core: str = "arm9") -> list[OverlayHit]:
+        return []
+
+    def overlay_details(self, index: int, core: str = "arm9") -> OverlayDetails:
+        raise ValueError("sem overlay")
+
 
 class FakeBridge:
     """Minimal bridge with the pieces used by the tools."""
@@ -94,6 +105,9 @@ class FakeBridge:
 
     def overlays(self) -> FakeOverlays:
         return FakeOverlays()
+
+    def overlay_resolver(self) -> OverlayResolver:
+        return OverlayResolver(self.overlays())
 
     def files(self) -> FakeStore:
         return self.store
