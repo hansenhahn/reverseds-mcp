@@ -110,3 +110,79 @@ def test_dma_transfer_16bit_length() -> None:
     assert transfer.cpu == 1
     assert transfer.channel == 1
     assert transfer.destination.control == "dec"
+
+
+def test_scroll_window_mosaic_blend_registers_a_b() -> None:
+    """New engine A/B scroll/window/mosaic/blend registers decode their fields."""
+    assert _fields(_decode(0x04000010, 0x123, 2)) == {"offset": 0x123}
+    assert _fields(_decode(0x04001012, 0x1FF, 2)) == {"offset": 0x1FF}
+
+    win_h = _fields(_decode(0x04001040, 0x2A14, 2))
+    assert (win_h["right"], win_h["left"]) == (0x14, 0x2A)
+    win_v = _fields(_decode(0x04000044, 0x8070, 2))
+    assert (win_v["bottom"], win_v["top"]) == (0x70, 0x80)
+
+    winin = _fields(_decode(0x04001048, 0x3F3F, 2))
+    assert winin["win0_effect"] == 1 and winin["win1_obj"] == 1
+    winout = _fields(_decode(0x0400004A, 0x3F3F, 2))
+    assert winout["out_effect"] == 1 and winout["objwin_bg3"] == 1
+
+    mosaic = _fields(_decode(0x0400004C, 0x1234, 2))
+    assert (mosaic["bg_h"], mosaic["bg_v"], mosaic["obj_h"], mosaic["obj_v"]) == (
+        4, 3, 2, 1,
+    )
+
+    bldcnt = _fields(_decode(0x04000050, 0x1251, 2))
+    assert bldcnt["target1_bg0"] == 1 and bldcnt["target1_obj"] == 1
+    assert bldcnt["effect"] == 1  # alpha
+    assert bldcnt["target2_bg1"] == 1 and bldcnt["target2_obj"] == 1
+
+    alpha = _fields(_decode(0x04000052, 0x0F07, 2))
+    assert (alpha["eva"], alpha["evb"]) == (7, 15)
+    assert _fields(_decode(0x04000054, 0x0A, 2)) == {"evy": 10}
+
+
+def test_new_video_registers_are_write_only() -> None:
+    """The new scroll/window/mosaic/blend registers are marked write-only."""
+    for addr in (0x04000010, 0x04001040, 0x04001048, 0x0400004C, 0x04001050):
+        register = _MAP.register_at(addr)
+        assert register is not None and register.write_only is True
+
+
+def test_io_read_raw_decodes_without_memory(monkeypatch) -> None:
+    """`io_read(addr, raw=...)` decodes the value without reading memory."""
+    from re_mcp.tools import io as io_tools
+
+    class FakeBridge:
+        def io_map(self) -> IoMap:
+            return _MAP
+
+        def debugger(self) -> object:
+            raise AssertionError("debugger não deveria ser usado com raw")
+
+    monkeypatch.setattr(io_tools, "bridge", FakeBridge())
+    out = io_tools.io_read(0x04000010, raw=0x123)
+    assert out["name"] == "BG0HOFS_A"
+    assert out["write_only"] is True
+    assert out["fields"]["offset"]["value"] == 0x123
+
+
+def test_io_read_write_only_zero_hint(monkeypatch) -> None:
+    """A write-only register read as 0 includes a hint."""
+    from re_mcp.tools import io as io_tools
+
+    class FakeDebugger:
+        def read_memory(self, addr: int, size: int) -> bytes:
+            return b"\x00" * size
+
+    class FakeBridge:
+        def io_map(self) -> IoMap:
+            return _MAP
+
+        def debugger(self) -> FakeDebugger:
+            return FakeDebugger()
+
+    monkeypatch.setattr(io_tools, "bridge", FakeBridge())
+    out = io_tools.io_read(0x04000010)
+    assert out["write_only"] is True
+    assert "hint" in out

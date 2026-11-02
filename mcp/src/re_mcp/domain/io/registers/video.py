@@ -2,6 +2,106 @@
 from ..decode import Register, RegField
 
 
+def _scroll_fields() -> tuple[RegField, ...]:
+    """Fields for BGxHOFS/BGxVOFS."""
+    return (RegField.bits("offset", 0, 8, (), "Scroll offset (0..511)"),)
+
+
+def _window_h_fields() -> tuple[RegField, ...]:
+    """Fields for WINxH (right/left edges)."""
+    return (
+        RegField.bits("right", 0, 7, (), "Right edge"),
+        RegField.bits("left", 8, 15, (), "Left edge"),
+    )
+
+
+def _window_v_fields() -> tuple[RegField, ...]:
+    """Fields for WINxV (bottom/top edges)."""
+    return (
+        RegField.bits("bottom", 0, 7, (), "Bottom edge"),
+        RegField.bits("top", 8, 15, (), "Top edge"),
+    )
+
+
+def _winin_fields() -> tuple[RegField, ...]:
+    """Fields for WININ (window 0/1 enables)."""
+    fields: list[RegField] = []
+    for window, base in (("win0", 0), ("win1", 8)):
+        for bg in range(4):
+            fields.append(
+                RegField.bit(f"{window}_bg{bg}", base + bg, (), f"{window}: BG{bg}")
+            )
+        fields.append(RegField.bit(f"{window}_obj", base + 4, (), f"{window}: OBJ"))
+        fields.append(
+            RegField.bit(f"{window}_effect", base + 5, (), f"{window}: color effect")
+        )
+    return tuple(fields)
+
+
+def _winout_fields() -> tuple[RegField, ...]:
+    """Fields for WINOUT (outside/OBJ-window enables)."""
+    fields: list[RegField] = []
+    for window, base in (("out", 0), ("objwin", 8)):
+        for bg in range(4):
+            fields.append(
+                RegField.bit(f"{window}_bg{bg}", base + bg, (), f"{window}: BG{bg}")
+            )
+        fields.append(RegField.bit(f"{window}_obj", base + 4, (), f"{window}: OBJ"))
+        fields.append(
+            RegField.bit(f"{window}_effect", base + 5, (), f"{window}: color effect")
+        )
+    return tuple(fields)
+
+
+def _mosaic_fields() -> tuple[RegField, ...]:
+    """Fields for MOSAIC."""
+    return (
+        RegField.bits("bg_h", 0, 3, (), "BG horizontal size"),
+        RegField.bits("bg_v", 4, 7, (), "BG vertical size"),
+        RegField.bits("obj_h", 8, 11, (), "OBJ horizontal size"),
+        RegField.bits("obj_v", 12, 15, (), "OBJ vertical size"),
+    )
+
+
+def _bldcnt_fields() -> tuple[RegField, ...]:
+    """Fields for BLDCNT (targets and effect)."""
+    fields: list[RegField] = []
+    for target, base in (("target1", 0), ("target2", 8)):
+        for bg in range(4):
+            fields.append(
+                RegField.bit(f"{target}_bg{bg}", base + bg, (), f"{target}: BG{bg}")
+            )
+        fields.append(RegField.bit(f"{target}_obj", base + 4, (), f"{target}: OBJ"))
+        fields.append(
+            RegField.bit(
+                f"{target}_backdrop", base + 5, (), f"{target}: backdrop"
+            )
+        )
+    fields.append(
+        RegField.bits(
+            "effect",
+            6,
+            7,
+            ((0, "none"), (1, "alpha"), (2, "white"), (3, "black")),
+            "Color effect",
+        )
+    )
+    return tuple(fields)
+
+
+def _bldalpha_fields() -> tuple[RegField, ...]:
+    """Fields for BLDALPHA."""
+    return (
+        RegField.bits("eva", 0, 4, (), "EVA (first target)"),
+        RegField.bits("evb", 8, 12, (), "EVB (second target)"),
+    )
+
+
+def _bldy_fields() -> tuple[RegField, ...]:
+    """Fields for BLDY."""
+    return (RegField.bits("evy", 0, 4, (), "EVY (white/black fade)"),)
+
+
 def video_registers() -> list[Register]:
     """The video registers of engines A and B.
 
@@ -67,4 +167,50 @@ def video_registers() -> list[Register]:
     for i in range(4):
         registers.append(Register(f"BG{i}CNT_A", 0x04000008 + 2 * i, 2, bgcnt, f"BG{i} control (engine A)"))
         registers.append(Register(f"BG{i}CNT_B", 0x04001008 + 2 * i, 2, bgcnt, f"BG{i} control (engine B)"))
+
+    scroll = _scroll_fields()
+    win_h = _window_h_fields()
+    win_v = _window_v_fields()
+    winin = _winin_fields()
+    winout = _winout_fields()
+    mosaic = _mosaic_fields()
+    bldcnt = _bldcnt_fields()
+    bldalpha = _bldalpha_fields()
+    bldy = _bldy_fields()
+    for engine, base in (("A", 0x04000000), ("B", 0x04001000)):
+        for i in range(4):
+            registers.append(
+                Register(
+                    f"BG{i}HOFS_{engine}",
+                    base + 0x10 + 4 * i,
+                    2,
+                    scroll,
+                    f"BG{i} horizontal scroll ({engine})",
+                    True,
+                )
+            )
+            registers.append(
+                Register(
+                    f"BG{i}VOFS_{engine}",
+                    base + 0x12 + 4 * i,
+                    2,
+                    scroll,
+                    f"BG{i} vertical scroll ({engine})",
+                    True,
+                )
+            )
+        registers.extend(
+            [
+                Register(f"WIN0H_{engine}", base + 0x40, 2, win_h, f"Window 0 horizontal ({engine})", True),
+                Register(f"WIN1H_{engine}", base + 0x42, 2, win_h, f"Window 1 horizontal ({engine})", True),
+                Register(f"WIN0V_{engine}", base + 0x44, 2, win_v, f"Window 0 vertical ({engine})", True),
+                Register(f"WIN1V_{engine}", base + 0x46, 2, win_v, f"Window 1 vertical ({engine})", True),
+                Register(f"WININ_{engine}", base + 0x48, 2, winin, f"Window-in enables ({engine})", True),
+                Register(f"WINOUT_{engine}", base + 0x4A, 2, winout, f"Window-out enables ({engine})", True),
+                Register(f"MOSAIC_{engine}", base + 0x4C, 2, mosaic, f"Mosaic ({engine})", True),
+                Register(f"BLDCNT_{engine}", base + 0x50, 2, bldcnt, f"Blend control ({engine})", True),
+                Register(f"BLDALPHA_{engine}", base + 0x52, 2, bldalpha, f"Blend alpha ({engine})", True),
+                Register(f"BLDY_{engine}", base + 0x54, 2, bldy, f"Blend Y ({engine})", True),
+            ]
+        )
     return registers
