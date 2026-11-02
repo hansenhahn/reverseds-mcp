@@ -82,6 +82,9 @@ class FakeBridge:
     def symbols(self) -> SymbolTable:
         return SymbolTable([])
 
+    def active_overlay(self, core: str = "arm9") -> int | None:
+        return None
+
     def overlay_resolver(self) -> OverlayResolver:
         return OverlayResolver(self.overlays())
 
@@ -147,6 +150,7 @@ def test_addr_valid_resolves_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
         "offset": 0x1E864,
         "offset_file": 0x1E864,
         "offset_code": None,
+        "symbol": None,
     }
     assert out["ambiguous"] is False
     assert len(out["overlays"]) == 1

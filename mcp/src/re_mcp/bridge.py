@@ -103,6 +103,12 @@ class Bridge:
         if self._overlay_resolver is not None:
             self._overlay_resolver.clear(core)
 
+    def active_overlay(self, core: str = "arm9") -> int | None:
+        """Return the active overlay ID without opening the control channel."""
+        if self._overlay_resolver is None:
+            return None
+        return self._overlay_resolver.selection(core)[0]
+
     def io_map(self) -> IoMap:
         """Return the IO register map (built on the first call, at the composition root).
 

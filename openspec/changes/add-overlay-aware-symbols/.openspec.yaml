@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-02
+goal: "Resolver símbolos por overlay: chave (addr, overlay), filtro/seleção
+  ativa, mapas por unidade e anotações sem colisão na base compartilhada."

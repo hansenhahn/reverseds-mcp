@@ -164,7 +164,9 @@ def mem_dump_file(addr: int, size: int, name: str | None = None) -> dict:
 
 
 @mcp.tool()
-def disassemble(addr: int, count: int = 16, mode: str = "arm") -> dict:
+def disassemble(
+    addr: int, count: int = 16, mode: str = "arm", overlay: int | None = None
+) -> dict:
     """Disassemble ``count`` instructions starting at ``addr`` (ARM or Thumb).
 
     Reads memory through the debug backend — the target must be **stopped**.
@@ -173,6 +175,7 @@ def disassemble(addr: int, count: int = 16, mode: str = "arm") -> dict:
         addr (int): Start address.
         count (int): Number of instructions (1..256).
         mode (str): ``arm`` or ``thumb``.
+        overlay (int | None): Optional overlay for symbol annotation (default: active).
 
     Returns:
         dict: ``{"addr", "mode", "instructions": [...]}`` or ``{"error": ...}``.
@@ -187,16 +190,18 @@ def disassemble(addr: int, count: int = 16, mode: str = "arm") -> dict:
     except ValueError as exc:
         return {"error": str(exc)}
     symbols = bridge.symbols()
+    core = bridge.debugger().core() or "arm9"
+    chosen_overlay = overlay if overlay is not None else bridge.active_overlay(core)
     annotated = []
     for item in instructions:
-        symbol = symbols.resolve(item.address)
+        symbol = symbols.resolve(item.address, chosen_overlay)
         target_symbol = None
         if item.mnemonic.startswith("b") and not item.mnemonic.startswith(
             ("bic", "bfi", "bfc", "bkpt")
         ):
             match = re.search(r"0x[0-9a-fA-F]+", item.op_str)
             if match is not None:
-                target = symbols.resolve(int(match.group(0), 16))
+                target = symbols.resolve(int(match.group(0), 16), chosen_overlay)
                 target_symbol = target.name if target else None
         annotated.append(
             {
@@ -388,9 +393,11 @@ def debug_backtrace() -> dict:
     except DebugError as exc:
         return debug_error(exc)
     symbols = bridge.symbols()
+    core = bridge.debugger().core() or "arm9"
+    chosen_overlay = bridge.active_overlay(core)
     annotated = []
     for frame in frames:
-        symbol = symbols.resolve(frame.pc)
+        symbol = symbols.resolve(frame.pc, chosen_overlay)
         annotated.append(
             {
                 "index": frame.index,
@@ -442,14 +449,15 @@ def debug_slots() -> dict:
     }
 
 
-def _hit_list(result: dict) -> list[dict]:
+def _hit_list(result: dict, core: str = "arm9") -> list[dict]:
     """Format hit-log entries with hex addresses and symbols."""
     hits = result.get("hits", [])
     symbols = bridge.symbols()
+    chosen_overlay = bridge.active_overlay(core)
     formatted = []
     for hit in hits:
         pc = int(hit["pc"])
-        symbol = symbols.resolve(pc)
+        symbol = symbols.resolve(pc, chosen_overlay)
         formatted.append(
             {
                 "pc": f"0x{pc:08x}",
@@ -516,7 +524,7 @@ def hit_log_read(core: str = "arm9", clear: bool = False) -> dict:
     result = control_call("gdb.hits.read", {"core": core})
     if "error" in result:
         return result
-    hits = _hit_list(result)
+    hits = _hit_list(result, core)
     if clear:
         cleared = control_call("gdb.hits.clear", {"core": core})
         if "error" in cleared:

@@ -89,6 +89,9 @@ class FakeBridge:
     def symbols(self) -> SymbolTable:
         return self.table
 
+    def active_overlay(self, core: str = "arm9") -> int | None:
+        return None
+
 
 def test_args_on_hit_checks_schema() -> None:
     """Valid schema checks are all ok; a bad pointer is reported."""

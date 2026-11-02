@@ -77,6 +77,9 @@ class FakeBridge:
     def symbols(self) -> SymbolTable:
         return self.table
 
+    def active_overlay(self, core: str = "arm9") -> int | None:
+        return None
+
 
 def test_arg_spec_tokens_and_checked() -> None:
     """Known tokens check values; unknown tokens stay unchecked."""

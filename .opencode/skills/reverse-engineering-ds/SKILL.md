@@ -56,6 +56,9 @@ illustrative only.
   `dst`, `width`, `height`, `bpp` and a buffer size. The text source (often an
   NFTR font plus a UTF-16 string) is measured, laid out, clipped and blitted into
   the surface; the surface is then uploaded to VRAM.
+- **Symbol**: a name for an address, keyed by `(addr, overlay)`; `overlay=None`
+  is a global fallback. Overlays that share a base can have different names at
+  the same address.
 - **Watchpoint / hit log**: a watchpoint triggers on an access (write/read/access)
   to an address range; the hit log records many hits without stopping. Treat the
   logged `pc`/`addr` as **observations with hardware caveats** (Technique 11).
@@ -255,9 +258,12 @@ hardcode a game's bases into reusable rules.
   `compressed_size` and optional `code_base`/`prefix_size`. `addr_valid` reports
   `offset_file` (always) and `offset_code` (when the code base is known); do not
   mix the two systems in the same document.
-- `symbol_define(..., overlay=)` stores `overlay` as metadata; `symbol_lookup`
-  resolves by address without filtering overlay. Keep a per-unit `.map` and audit
-  it; prefer an explicit resident-overlay check when bases are shared.
+- Symbols are keyed by `(addr, overlay)`: `symbol_define(..., overlay=N)`,
+  `symbol_lookup(addr, overlay=)`, `symbol_list(kind, overlay=)` and
+  `symbol_load(path, overlay=N)`. Without an explicit overlay they use
+  `overlay_select`; if more than one name shares the address, lookup returns
+  `ambiguous=true` plus the list. `symbol_load(merge=false, overlay=N)` replaces
+  only that overlay, keeping globals and other overlays.
 
 ### 10.4 Decomp style and standardization
 
