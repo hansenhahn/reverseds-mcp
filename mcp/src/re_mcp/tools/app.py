@@ -52,6 +52,7 @@ def reg_dict(register: DecodedRegister) -> dict:
         "address": f"0x{register.address:08x}",
         "raw": f"0x{register.raw:x}",
         "description": register.description,
+        "write_only": register.write_only,
         "fields": {
             f.name: {"value": f.value, "meaning": f.meaning, "description": f.description}
             for f in register.fields

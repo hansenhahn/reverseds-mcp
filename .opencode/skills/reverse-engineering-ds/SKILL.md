@@ -96,8 +96,10 @@ don't know the target frame. **Never run free and hope.**
 
 Use `render_layer(engine, layer)` — it drives the emulator's own renderer for one
 layer (engine A/B × bg0-3/obj/3d) and writes PNGs. `video_state(engine)` decodes
-DISPCNT/BGxCNT/scroll/brightness; `vram_layout()` gives the real bank mapping
-(VRAMCNT is write-only on hardware, but the emulator exposes it).
+DISPCNT/BGxCNT/scroll/brightness; `io_read` decodes scroll/window/mosaic/blend
+(A/B) and reports `write_only` registers (`raw=` decodes a known value without
+I/O); `vram_layout()` gives the real bank mapping (VRAMCNT is write-only on
+hardware, but the emulator exposes it).
 
 Hand-composing tiles/sprites/palettes is guesswork; the renderer is ground truth.
 Only fall back to manual decoding to extract a raw asset for offline tools.

@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-02
+goal: Completar o schema de video 2D (A/B) com scroll, janelas, mosaic e
+  blending, com metadados de write-only.

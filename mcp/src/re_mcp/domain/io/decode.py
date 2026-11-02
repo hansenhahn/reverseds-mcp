@@ -77,6 +77,7 @@ class DecodedRegister:
     raw: int
     fields: tuple[DecodedField, ...]
     description: str = ""
+    write_only: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +89,7 @@ class Register:
     size: int
     fields: tuple[RegField, ...]
     description: str = ""
+    write_only: bool = False
 
     def decode(self, data: bytes) -> DecodedRegister:
         """Decode this register from the bytes read at its address.
@@ -108,7 +110,13 @@ class Register:
                 DecodedField(spec.name, value, meaning, spec.description)
             )
         return DecodedRegister(
-            self.name, self.address, self.size, raw, tuple(decoded), self.description
+            self.name,
+            self.address,
+            self.size,
+            raw,
+            tuple(decoded),
+            self.description,
+            self.write_only,
         )
 
 
