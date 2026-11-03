@@ -1,4 +1,5 @@
 """Patch model: writes, merged regions and byte-level equivalence (pure)."""
+import json
 from dataclasses import dataclass
 
 _MAX_WRITES = 256
@@ -42,6 +43,10 @@ class PatchWrite:
     def end(self) -> int:
         """Exclusive end address."""
         return self.addr + len(self.data)
+
+    def to_spec(self) -> dict:
+        """Serialize the write as ``{"addr": int, "bytes": hex}``."""
+        return {"addr": self.addr, "bytes": self.data.hex()}
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +97,38 @@ class Patch:
         return tuple(
             sorted({write.addr + offset for write in self.writes for offset in range(len(write.data))})
         )
+
+    def to_specs(self) -> list[dict]:
+        """Serialize the patch as the tool/JSON write list."""
+        return [write.to_spec() for write in self.writes]
+
+    def to_json(self) -> str:
+        """Serialize the patch to the persisted JSON shape."""
+        return json.dumps({"writes": self.to_specs()}, indent=2)
+
+    @classmethod
+    def from_json(cls, text: str) -> "Patch":
+        """Parse the persisted patch JSON (empty ``writes`` is allowed).
+
+        Parameters:
+            text (str): The JSON contents.
+
+        Returns:
+            Patch: The parsed patch (possibly empty).
+
+        Raises:
+            ValueError: If the JSON is invalid or the writes are invalid.
+        """
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"JSON de patch inválido: {exc}") from exc
+        raw = data.get("writes") if isinstance(data, dict) else None
+        if not isinstance(raw, list):
+            raise ValueError("JSON de patch sem a lista 'writes'")
+        if not raw:
+            return cls(())
+        return cls.from_specs(raw)
 
     def apply(self, memory: dict[int, int]) -> dict[int, int]:
         """Apply the writes over a copy of ``memory`` and return the result."""
