@@ -10,6 +10,7 @@ from .config import Config
 from .application.ports import CartFs, ControlChannel, Debugger, FileStore, Overlays
 from .application.decomp import DecompSnippets
 from .application.overlays import OverlayResolver
+from .application.patch_state import PatchManager
 from .application.snapshots import Snapshots
 from .domain.cartfs import RomInfo
 from .domain.io import IoMap
@@ -42,6 +43,7 @@ class Bridge:
         self._snapshots: Snapshots | None = None
         self._decomp: DecompSnippets | None = None
         self._overlay_resolver: OverlayResolver | None = None
+        self._patch_manager: PatchManager | None = None
         self._io_map: IoMap | None = None
 
     @property
@@ -91,6 +93,12 @@ class Bridge:
         if self._snapshots is None:
             self._snapshots = Snapshots(self.debugger(), self.files())
         return self._snapshots
+
+    def patch_manager(self) -> PatchManager:
+        """Return the persistent RAM patch manager."""
+        if self._patch_manager is None:
+            self._patch_manager = PatchManager(self.debugger(), self.files())
+        return self._patch_manager
 
     def overlay_resolver(self) -> OverlayResolver:
         """Return the overlay resolver (candidates + active selection)."""
@@ -218,3 +226,4 @@ class Bridge:
             self._debugger = None
         self._rom = None
         self._overlay_resolver = None
+        self._patch_manager = None

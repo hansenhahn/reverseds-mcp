@@ -403,6 +403,11 @@ Practical rules:
 7. **Package** — overlay decompress → `armips` → recompress → repack; verify only
    the expected words changed.
 
+> **Runtime patches:** `patch_set([...], persist=true)` keeps a RAM patch set and
+> `savestate_load` re-applies it automatically. Overlay reloads are not detected yet;
+> call `patch_apply()` after the reload. `patch_clear()` forgets the set (it does not
+> revert bytes already written).
+
 ## Anti-patterns
 
 - Patching composition/measure/bbox and expecting the display to change.

@@ -86,6 +86,7 @@ def test_lists_display_helpers() -> None:
     for tool in (
         "map_cell", "cell_at_screen", "vram_tile_bytes",
         "find_tile_in_ram", "dma_source", "dump_tilemap", "render_bg_map",
+        "patch_set", "patch_apply", "patch_clear", "patch_list",
     ):
         assert tool in names
 

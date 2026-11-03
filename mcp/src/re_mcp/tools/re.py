@@ -509,6 +509,86 @@ def diff_patch(asm_patch: list[dict], c_equiv: list[dict]) -> dict:
     }
 
 
+@mcp.tool()
+def patch_set(
+    patches: list[dict], persist: bool = True, apply: bool = True
+) -> dict:
+    """Set the active RAM patch, optionally applying/persisting it.
+
+    Parameters:
+        patches (list[dict]): Writes ``[{addr, bytes}, ...]`` (bytes in hex).
+        persist (bool): Persist to ``patches.json`` in the output directory.
+        apply (bool): Write the bytes to RAM now (requires gdb for writing).
+
+    Returns:
+        dict: ``{"ok", "writes", "bytes", "regions", "applied", "persisted",
+        "path"}`` or an error.
+    """
+    try:
+        patch, path = bridge.patch_manager().set(patches, persist, apply)
+    except ValueError as exc:
+        return error(exc, "Use [{addr, bytes(hex)}, ...] com endereços válidos.")
+    except DebugError as exc:
+        return debug_error(exc)
+    return {
+        "ok": True,
+        "writes": len(patch.writes),
+        "bytes": sum(len(write.data) for write in patch.writes),
+        "regions": [[f"0x{start:08x}", f"0x{end:08x}"] for start, end in patch.regions],
+        "applied": apply,
+        "persisted": persist,
+        "path": path,
+    }
+
+
+@mcp.tool()
+def patch_apply() -> dict:
+    """Reapply the active RAM patch (e.g. after an overlay reload).
+
+    Returns:
+        dict: ``{"ok", "writes"}`` or ``{"error", "hint"?}``.
+    """
+    try:
+        writes = bridge.patch_manager().apply()
+    except DebugError as exc:
+        return debug_error(exc)
+    if writes == 0:
+        return {"ok": True, "writes": 0, "hint": "Nenhum patch ativo."}
+    return {"ok": True, "writes": writes}
+
+
+@mcp.tool()
+def patch_clear(persist: bool = True) -> dict:
+    """Clear the active RAM patch (does not revert bytes already written).
+
+    Parameters:
+        persist (bool): Persist the empty set to ``patches.json``.
+
+    Returns:
+        dict: ``{"ok", "cleared"}``.
+    """
+    cleared = bridge.patch_manager().clear(persist)
+    return {"ok": True, "cleared": cleared}
+
+
+@mcp.tool()
+def patch_list() -> dict:
+    """List the active RAM patch and its writes.
+
+    Returns:
+        dict: ``{"active", "writes", "bytes", "regions"}``.
+    """
+    patch = bridge.patch_manager().list()
+    if patch is None:
+        return {"active": False, "writes": [], "bytes": 0, "regions": []}
+    return {
+        "active": True,
+        "writes": patch.to_specs(),
+        "bytes": sum(len(write.data) for write in patch.writes),
+        "regions": [[f"0x{start:08x}", f"0x{end:08x}"] for start, end in patch.regions],
+    }
+
+
 def _cell_dict(cell: BgCell) -> dict:
     """Serialize a decoded BG cell."""
     return {

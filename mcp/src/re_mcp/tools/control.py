@@ -254,9 +254,20 @@ def savestate_load(slot: int = 0) -> dict:
         slot (int): Slot identifier.
 
     Returns:
-        dict: ``{"ok": true, "path": ...}`` or ``{"error": ...}``.
+        dict: ``{"ok": true, "path": ...}`` plus ``patch_reapplied``/``patch_error``
+        when a RAM patch is active; or ``{"error": ...}``.
     """
-    return control_call("savestate.load", {"slot": slot})
+    result = control_call("savestate.load", {"slot": slot})
+    if "error" in result:
+        return result
+    try:
+        applied = bridge.patch_manager().apply()
+        if applied:
+            result["patch_reapplied"] = applied
+    except DebugError as exc:
+        result["patch_error"] = str(exc)
+        result["patch_hint"] = "Conecte o gdb e chame patch_apply() antes de usar o patch."
+    return result
 
 
 @mcp.tool()

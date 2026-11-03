@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-03
+goal: Manter um conjunto de patches de RAM e reaplica-lo apos savestate_load,
+  com persistencia em disco e aplicacao manual.
