@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-11-08
+goal: "Janela de viewers com abas (OAM migrado + 3D): ver o frame renderizado,
+  sobrepor polígonos com id, preview de textura e localizar elementos/posição de
+  tela para depurar e reposicionar depois."

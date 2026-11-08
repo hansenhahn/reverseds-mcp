@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-08
+goal: "Depurar 3D com o runtime como fonte de verdade: estado do pipeline,
+  polígonos renderizados e a fila de comandos GXFIFO observáveis pelo canal."
