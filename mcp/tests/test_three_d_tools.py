@@ -96,3 +96,84 @@ def test_gxfifo_flow(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rec.calls[0][1] == {"max_items": 16}
     assert slept == [0.5]
     assert out["count"] == 0
+
+
+def test_gxfifo_typed_decode(monkeypatch: pytest.MonkeyPatch) -> None:
+    rec = Recorder({
+        "3d.gxfifo.read": {
+            "count": 2,
+            "commands": [
+                {"cmd": 0x40, "params": [0], "pc": 0, "frame": 0, "fifo": 0},
+                {"cmd": 0x23, "params": [0x00010002, 0x0003], "pc": 0, "frame": 0, "fifo": 0},
+            ],
+        }
+    })
+    monkeypatch.setattr(three_d, "control_call", rec)
+    out = three_d.gxfifo_trace_read(decode="typed")
+    assert out["commands"][0]["typed"]["primitive_name"] == "triangles"
+    assert out["commands"][1]["typed"] == {"x": 2, "y": 1, "z": 3}
+
+
+def test_origin_tools_format_hex(monkeypatch: pytest.MonkeyPatch) -> None:
+    rec = Recorder({
+        "origin.query": {"count": 1, "unknown": False,
+                         "hits": [{"src": 0x02001000, "dst_lo": 0x06000000,
+                                   "dst_hi": 0x06000100, "len": 0x100,
+                                   "pc": 0x0200ABCD, "frame": 3, "kind": 0}]}
+    })
+    monkeypatch.setattr(three_d, "control_call", rec)
+    out = three_d.origin_query(0x06000000, 0x100)
+    assert out["hits"][0]["src"] == "0x02001000"
+    assert out["hits"][0]["pc"] == "0x0200abcd"
+
+
+def test_find_bytes_in_ram(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(three_d, "control_call", Recorder())
+    monkeypatch.setattr(three_d, "_find_pattern", lambda *a: [0x02001234])
+    out = three_d.find_bytes_in_ram(hex_data="deadbeef")
+    assert out["count"] == 1
+    assert out["hits"] == ["0x02001234"]
+
+
+def test_find_bytes_in_ram_rejects_bad_hex(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(three_d, "control_call", Recorder())
+    out = three_d.find_bytes_in_ram(hex_data="zz")
+    assert "error" in out
+
+
+def test_texture_source_finds_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    rec = Recorder({
+        "3d.textures": {"textures": [{"index": 0, "tex_param": 0x12345678,
+                                      "tex_palette": 0x20, "format": 3,
+                                      "width": 8, "height": 8, "vram_addr": 0}]},
+        "3d.texture_raw": {"binary": {"width": 8, "height": 8, "data": b"\x01\x02\x03"},
+                           "format_id": 3},
+    })
+    monkeypatch.setattr(three_d, "control_call", rec)
+    monkeypatch.setattr(three_d, "_find_pattern", lambda *a: [0x02002000])
+    out = three_d.gpu3d_texture_source(index=0)
+    assert out["count"] == 1
+    assert out["candidates"] == ["0x02002000"]
+    assert out["unknown"] is False
+
+
+def test_texture_source_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    rec = Recorder({
+        "3d.textures": {"textures": [{"index": 0, "tex_param": 0x1, "tex_palette": 0,
+                                      "format": 3, "width": 8, "height": 8, "vram_addr": 0}]},
+        "3d.texture_raw": {"binary": {"width": 8, "height": 8, "data": b"\xaa"},
+                           "format_id": 3},
+    })
+    monkeypatch.setattr(three_d, "control_call", rec)
+    monkeypatch.setattr(three_d, "_find_pattern", lambda *a: [])
+    out = three_d.gpu3d_texture_source(index=0)
+    assert out["unknown"] is True and out["count"] == 0
+
+
+def test_gxfifo_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    rec = Recorder({"gxfifo.origin": {"count": 1, "unknown": False,
+                                      "hits": [{"src": 0x02003000, "len": 0x40}]}})
+    monkeypatch.setattr(three_d, "control_call", rec)
+    out = three_d.gxfifo_source()
+    assert out["count"] == 1
+    assert rec.calls[0][0] == "gxfifo.origin"
