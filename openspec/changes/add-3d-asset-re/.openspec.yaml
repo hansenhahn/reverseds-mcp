@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-11-08
+goal: "Fechar a origem dos assets 3D no runtime: de onde vem a textura/geometria
+  (VRAM -> write -> buffer de RAM -> loader), com decode tipado do GXFIFO. Para
+  no decomp; extração/import é ferramenta externa (kheartsds-tool)."
