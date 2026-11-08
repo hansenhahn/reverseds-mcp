@@ -78,6 +78,10 @@ tools yet).
   `gpu3d_texture_dump`, `gxfifo_trace_start`, `gxfifo_trace_read`,
   `gxfifo_trace_stop`. State/polygons/textures come from a VBlank snapshot;
   `render_layer(engine=A, layer=3d)` remains the image oracle.
+- **3D asset origin**: `gpu3d_texture_source`, `gxfifo_source`, `origin_start`,
+  `origin_stop`, `origin_query`, `find_bytes_in_ram`. Locates the RAM source of a
+  texture (content search) and the GXFIFO display list; extraction/import stays
+  external.
 - **Memory diff**: `mem_snapshot`, `state_diff`.
 - **Cartridge/NitroFS**: `cart_list`, `cart_read`, `cart_read_files`, `cart_file`,
   `cart_trace_start`, `cart_trace_read`, `cart_trace_stop`.

@@ -95,3 +95,25 @@ Practical rules:
 - The trace shows what the writer pushed; the polygons show the result. Use both.
 - Snapshot/polygons/textures are per completed frame; freeze (Technique 1) or
   step to a frame boundary when comparing.
+
+### Asset origin (texture and display list)
+
+**Goal:** answer "where did this come from?" and stop at the decomp, not at asset
+extraction (extraction/import is an external tool, e.g. `kheartsds-tool`).
+
+- **Texture origin:** `gpu3d_texture_source(index | tex_param/tex_palette)` reads
+  the texture's **raw bytes** (`3d.texture_raw`) and searches RAM for an identical
+  pattern. The hits are candidate source buffers (already decompressed). Set a
+  watchpoint on a candidate to reach the loader in code. `dump_source=true` saves
+  the candidate `.bin` to `/out`. Compressed 4x4 textures are a follow-up.
+- **Display-list origin:** arm `origin_start()` before the scene loads, then
+  `gxfifo_source()` returns the `src`/`pc`/`frame` of the buffer feeding the
+  GXFIFO; `dump_source` writes it. `origin_query(addr, len)` answers any VRAM range
+  (DMA writes). Without the history armed it returns `unknown` — never guess.
+- **Typed trace:** `gxfifo_trace_read(decode="typed")` adds semantic fields
+  (`vtx_*` x/y/z, `texcoord` u/v, `mtx_*` mode/elements, `begin_vtxs` primitive).
+- **Buffer search:** `find_bytes_in_ram(hex | from_addr/size, ram_start, ram_size)`
+  locates a known byte pattern (e.g. the raw texture) in RAM.
+
+**Boundary:** these tools observe and locate. No format parsers, no container
+walkers, no extraction/import; that belongs to the external tooling.

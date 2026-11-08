@@ -2,7 +2,7 @@
 name: reverse-engineering-ds
 description: Game-agnostic techniques for reverse engineering Nintendo DS games with the re-mcp MCP server and the melonDS fork (control channel + GDB stub). Covers frame-accurate freeze/step, renderer-as-oracle, 3D state/polygons/textures and GXFIFO tracing, differential memory analysis, DMA/IO tracing, overlay and address math, watchpoint/hit-log semantics, text/UI pipeline mapping, and decomp/patch standardization. Use for NDS animations, HUDs, graphics, assets, 3D scenes, overlays and the code that produces them.
 metadata:
-  version: "0.6"
+  version: "0.7"
 ---
 
 # Reverse engineering NDS games (re-mcp + melonDS)
@@ -37,6 +37,7 @@ reference for the task at hand.
 | Map text/UI from screen to data and code | `display.md` T12 |
 | Inspect a 3D scene: state, polygons, textures, GXFIFO trace | `display.md` T14 |
 | Locate a 3D element on screen (for repositioning) | `display.md` T14 |
+| Find the RAM source of a 3D texture / display list | `display.md` T14 |
 | Go from a visible asset to its files and loader/drawer | `decomp.md` T5 |
 | Keep static/overlay decomp units and offsets honest | `decomp.md` T10 |
 | Make and verify a minimal reproducible patch | `decomp.md` T13 |
