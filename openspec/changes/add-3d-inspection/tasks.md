@@ -63,7 +63,7 @@
 
 ## 7. Documentação
 
-- [ ] 7.1 Atualizar a skill (`references/concepts.md` e `references/display.md`)
+- [x] 7.1 Atualizar a skill (`references/concepts.md` e `references/display.md`)
   com as tools 3D, indicando que `render_layer(3d)` continua sendo o oracle da
   imagem, que a trace mostra a **ordem de enfileiramento** e que o snapshot é do
   **frame completo (VBlank)**. Verificar: inventário de tools inclui as novas e o
