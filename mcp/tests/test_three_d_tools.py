@@ -27,7 +27,11 @@ def test_gpu3d_polygons_params(monkeypatch: pytest.MonkeyPatch) -> None:
     rec = Recorder()
     monkeypatch.setattr(three_d, "control_call", rec)
     three_d.gpu3d_polygons(max_items=8, vertices=False)
-    assert rec.calls[0] == ("3d.polygons", {"max_items": 8, "vertices": False}, None)
+    assert rec.calls[0] == (
+        "3d.polygons",
+        {"max_items": 8, "vertices": False, "source": "auto"},
+        None,
+    )
 
 
 def test_gpu3d_textures(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -51,7 +55,7 @@ def test_texture_dump_by_index(monkeypatch: pytest.MonkeyPatch) -> None:
     assert out["paths"] == ["/out/texture_2.png"]
     assert out["width"] == 32 and out["height"] == 16
     assert rec.calls[0][0] == "3d.texture"
-    assert rec.calls[0][1] == {"index": 2}
+    assert rec.calls[0][1] == {"index": 2, "source": "auto"}
     assert saved["prefix"] == "texture_2"
 
 
@@ -70,13 +74,31 @@ def test_texture_dump_explicit_params(monkeypatch: pytest.MonkeyPatch) -> None:
         three_d, "save_framebuffer_pngs", lambda result, *, format, prefix: {"paths": ["x"]}
     )
     three_d.gpu3d_texture_dump(tex_param=0x12345678, tex_palette=3)
-    assert rec.calls[0][1] == {"tex_param": 0x12345678, "tex_palette": 3}
+    assert rec.calls[0][1] == {
+        "tex_param": 0x12345678,
+        "tex_palette": 3,
+        "source": "auto",
+    }
+
+
+def test_snapshot_source_param(monkeypatch: pytest.MonkeyPatch) -> None:
+    rec = Recorder({"3d.state": {"frame": 42}})
+    monkeypatch.setattr(three_d, "control_call", rec)
+    assert three_d.gpu3d_state(source="last")["frame"] == 42
+    assert rec.calls[0] == ("3d.state", {"source": "last"}, None)
 
 
 def test_snapshot_timeout_adds_hint(monkeypatch: pytest.MonkeyPatch) -> None:
     rec = Recorder({"3d.state": {"error": "3D snapshot timeout (emulator paused?)"}})
     monkeypatch.setattr(three_d, "control_call", rec)
     out = three_d.gpu3d_state()
+    assert "error" in out and "hint" in out
+
+
+def test_snapshot_no_cache_adds_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    rec = Recorder({"3d.polygons": {"error": "no cached 3D snapshot"}})
+    monkeypatch.setattr(three_d, "control_call", rec)
+    out = three_d.gpu3d_polygons(source="last")
     assert "error" in out and "hint" in out
 
 

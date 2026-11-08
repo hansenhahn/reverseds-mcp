@@ -14,17 +14,20 @@ single call with no latency window. Timing: 1 frame ≈ 1/60 s.
 
 Steps:
 
-0. `savestate_save(slot)` at a known point — this is your undo. Reload it before
+0. `savestate_save(slot)` (or `savestate_save(name=...)`) at a known point — this
+   is your undo. It writes a verified sidecar (CRC/frame/gamecode); reload it before
    each attempt.
 1. `debug_connect("arm9")` — CPU halts.
 2. Arm input while halted: `input_touch(x, y)` / `input_key(mask)` set state even
    when stopped.
-3. `emu_step_frame(N)` — input is processed across the N frames, then it stops.
+3. `emu_step_frame(N, snapshot=True)` — input is processed across the N frames,
+   the 3D snapshot is captured on the last frame, and it stops.
 4. `input_release`.
 5. Inspect: `screen_capture`, `video_state`, `vram_layout`, `render_layer`,
-   `mem_dump_file`, `debug_read_register`, `disassemble`.
-6. Loop: `savestate_load(slot)` → re-arm input → `emu_step_frame(N)`. Resume with
-   `debug_resume` or another `emu_step_frame`.
+   `gpu3d_*` with `source="last"`, `mem_dump_file`, `debug_read_register`,
+   `disassemble`.
+6. Loop: `savestate_load(slot)` → re-arm input → `emu_step_frame(N, snapshot=True)`.
+   Resume with `debug_resume` or another `emu_step_frame`.
 
 Bisect the frame count in blocks (e.g., 60) and capture between blocks when you
 don't know the target frame. **Never run free and hope.**

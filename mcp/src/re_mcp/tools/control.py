@@ -233,31 +233,96 @@ def screen_capture(screens: str = "both", format: str = "rgba8") -> dict:
     return saved
 
 
+_SAVESTATE_HINTS = {
+    "gamecode": "O savestate foi gravado com outro jogo; carregue o ROM correto.",
+    "corrupted": "O arquivo não bate com o sidecar; salve de novo ou descarte o slot.",
+    "clobbered": "Outro processo sobrescreveu o slot; use savestate_list() para conferir.",
+    "locked": "Outra escrita está em andamento; aguarde e tente de novo.",
+    "another owner": "Passe force=True para carregar um estado de outra sessão.",
+    "mid-frame": "Pare num limite de quadro com emu_step_frame() antes de salvar.",
+    "no sidecar": "Estado antigo sem metadados: carregado sem verificação.",
+}
+
+
+def _savestate_result(result: dict) -> dict:
+    """Attach an actionable hint to a savestate error/warning, when recognized."""
+    text = str(result.get("error", "")) + " " + str(result.get("warning", ""))
+    lower = text.lower()
+    for key, hint in _SAVESTATE_HINTS.items():
+        if key in lower:
+            result.setdefault("hint", hint)
+            break
+    return result
+
+
+def _state_target(slot: int, name: str | None) -> dict:
+    params: dict = {}
+    if name:
+        params["name"] = name
+    else:
+        params["slot"] = slot
+    return params
+
+
 @mcp.tool()
-def savestate_save(slot: int = 0) -> dict:
-    """Save the emulation state to a slot.
+def savestate_save(
+    slot: int = 0,
+    name: str | None = None,
+    label: str | None = None,
+    owner: str | None = None,
+) -> dict:
+    """Save the emulation state, with a verified metadata sidecar.
+
+    The melonDS file format is unchanged; a ``.re.json`` sidecar stores the
+    size/CRC32, gamecode, frame, PC, owner and label. Use ``name`` for a named
+    state (no collision with the UI numeric slots).
 
     Parameters:
-        slot (int): Slot identifier.
+        slot (int): Numeric slot (used when ``name`` is absent).
+        name (str | None): Named state (``[A-Za-z0-9._-]``, not numeric).
+        label (str | None): Free-form note stored in the sidecar.
+        owner (str | None): Session/owner id used to guard cross-session loads.
 
     Returns:
-        dict: ``{"ok": true, "path": ...}`` or ``{"error": ...}``.
+        dict: the sidecar metadata plus ``verified``; or ``{"error", "hint"?}``.
     """
-    return control_call("savestate.save", {"slot": slot})
+    params = _state_target(slot, name)
+    if label:
+        params["label"] = label
+    if owner:
+        params["owner"] = owner
+    return _savestate_result(control_call("savestate.save", params, timeout=30.0))
 
 
 @mcp.tool()
-def savestate_load(slot: int = 0) -> dict:
-    """Load the emulation state from a slot.
+def savestate_load(
+    slot: int = 0,
+    name: str | None = None,
+    owner: str | None = None,
+    force: bool = False,
+) -> dict:
+    """Load an emulation state, validating it against the sidecar first.
+
+    Refuses corrupted/clobbered files, a different gamecode and (unless
+    ``force``) another owner. After loading, checks the round-trip (frame/PC)
+    and reports ``verified``/``divergence``.
 
     Parameters:
-        slot (int): Slot identifier.
+        slot (int): Numeric slot (used when ``name`` is absent).
+        name (str | None): Named state.
+        owner (str | None): Session/owner id (mismatch requires ``force``).
+        force (bool): Load even if the sidecar belongs to another owner.
 
     Returns:
-        dict: ``{"ok": true, "path": ...}`` plus ``patch_reapplied``/``patch_error``
-        when a RAM patch is active; or ``{"error": ...}``.
+        dict: ``{"ok", "verified", ...}`` plus ``patch_reapplied``/``patch_error``
+        when a RAM patch is active; or ``{"error", "hint"?}``.
     """
-    result = control_call("savestate.load", {"slot": slot})
+    params = _state_target(slot, name)
+    if owner:
+        params["owner"] = owner
+    if force:
+        params["force"] = True
+    result = _savestate_result(control_call("savestate.load", params, timeout=30.0))
     if "error" in result:
         return result
     try:
@@ -271,7 +336,32 @@ def savestate_load(slot: int = 0) -> dict:
 
 
 @mcp.tool()
-def emu_step_frame(n: int = 1) -> dict:
+def savestate_list() -> dict:
+    """List savestates with metadata, owner and external-overwrite detection.
+
+    Returns:
+        dict: ``{"count", "states": [...]}`` with ``verified``/``clobbered`` per
+        state, or ``{"error", "hint"?}``.
+    """
+    return _savestate_result(control_call("savestate.list", timeout=30.0))
+
+
+@mcp.tool()
+def emu_status() -> dict:
+    """Read the execution status and frame counter (works while halted).
+
+    Returns whether the emulation is running or halted, the current frame counter
+    and the frame of the last cached 3D snapshot with its age.
+
+    Returns:
+        dict: ``{"running", "halted", "frame", "snapshot"|null}`` or
+        ``{"error", "hint"?}``.
+    """
+    return control_call("emu.status")
+
+
+@mcp.tool()
+def emu_step_frame(n: int = 1, snapshot: bool = False) -> dict:
     """Advance exactly ``n`` frames and stop (deterministic frame step).
 
     Blocks until the ``n`` frames have been emulated, then leaves the emulator
@@ -280,14 +370,25 @@ def emu_step_frame(n: int = 1) -> dict:
     resume with ``debug_resume`` (or advance again with a new ``emu_step_frame``).
     Requires the emulator running.
 
+    With ``snapshot=True`` the 3D snapshot is captured on the **last** frame of
+    the step, atomically (run -> capture at VBlank -> halt), and cached; read it
+    right after with ``gpu3d_*`` using ``source="last"`` to keep the same frame
+    across calls.
+
     Parameters:
         n (int): Number of frames to advance (>= 1).
+        snapshot (bool): Capture the 3D snapshot on the last frame of the step.
 
     Returns:
-        dict: ``{"ok": true, "frames": n}`` or ``{"error": ...}``.
+        dict: ``{"ok": true, "frames": n, "frame": ...}`` (plus
+        ``snapshot_frame`` when captured) or ``{"error": ...}``.
     """
     # long operation: scale the read timeout with the number of frames
-    return control_call("emu.step_frame", {"n": n}, timeout=max(10.0, 5.0 + n / 10))
+    return control_call(
+        "emu.step_frame",
+        {"n": n, "snapshot": snapshot},
+        timeout=max(10.0, 5.0 + n / 10),
+    )
 
 
 @mcp.tool()

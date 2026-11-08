@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-08
+goal: "Savestates verificados e com dono: sidecar (hash/frame/gamecode), load
+  validado antes de aplicar, round-trip e nomes sem colisão com a UI."

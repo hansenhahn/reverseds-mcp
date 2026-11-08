@@ -67,9 +67,12 @@ Practical rules:
 **Goal:** debug a 3D scene from data, not from screenshots.
 
 Read the emulator's own 3D core; do not reimplement the geometry pipeline.
-`gpu3d_state`, `gpu3d_polygons` and `gpu3d_textures` come from a **one-shot
-snapshot at VBlank** (frame complete), so they describe the same frame. If the
-emulator is paused the snapshot times out — resume and retry.
+`gpu3d_state`, `gpu3d_polygons` and `gpu3d_textures` come from a snapshot taken
+at VBlank (frame complete). The last one is cached and shared, so consecutive
+reads describe the same frame even with the CPU halted. Capture atomically with
+`emu_step_frame(n, snapshot=True)` and read with `source="last"` (default
+`source="auto"` reuses the cache, `fresh` forces a new capture). `emu_status`
+reports the current frame and the cached snapshot frame/age.
 
 - **`gpu3d_state`**: enable flags, DISP3DCNT/GXStat, FIFO levels, matrix mode,
   projection/position/vector/texture matrices, viewport, fog and counts. Confirm

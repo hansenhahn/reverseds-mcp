@@ -1,9 +1,11 @@
 """MCP tools for the 3D engine: state, polygons, textures and the GXFIFO trace.
 
 These read the emulator's own 3D core (read-only). State/polygons/textures come
-from a one-shot snapshot taken at VBlank, so they describe the same completed
-frame. The GXFIFO trace records the entries enqueued on the writer path (CPU or
-DMA), decoded on the client side.
+from a snapshot taken at VBlank; the last one is cached, so consecutive reads can
+describe the same completed frame even with the CPU halted. Arm a capture
+atomically with ``emu_step_frame(n, snapshot=True)`` and then read with
+``source="last"``. The GXFIFO trace records the entries enqueued on the writer
+path (CPU or DMA), decoded on the client side.
 """
 import hashlib
 import time
@@ -19,8 +21,8 @@ from .app import (
 )
 
 _SNAPSHOT_HINT = (
-    "O snapshot do 3D é tirado no VBlank; se o emulador estiver pausado "
-    "(debugger parado), retome a execução e tente de novo."
+    "O snapshot do 3D é tirado no VBlank. Com a CPU parada, use "
+    "emu_step_frame(1, snapshot=True) e leia com source='last'."
 )
 _GXFIFO_HINT = (
     "Ligue a trace com gxfifo_trace_start() antes de ler; o melonDS precisa estar "
@@ -29,52 +31,68 @@ _GXFIFO_HINT = (
 
 
 def _snapshot_result(result: dict) -> dict:
-    if "error" in result and "timeout" in str(result["error"]).lower():
-        result.setdefault("hint", _SNAPSHOT_HINT)
+    if "error" in result:
+        text = str(result["error"]).lower()
+        if "snapshot" in text or "timeout" in text:
+            result.setdefault("hint", _SNAPSHOT_HINT)
     return result
 
 
 @mcp.tool()
-def gpu3d_state() -> dict:
-    """Read the decoded 3D engine state of the last completed frame (read-only).
+def gpu3d_state(source: str = "auto") -> dict:
+    """Read the decoded 3D engine state of a completed frame (read-only).
 
     Includes enable flags, DISP3DCNT/GXStat, FIFO levels, matrix mode, the
     projection/position/vector/texture matrices, viewport, fog and polygon/vertex
-    counts. The snapshot is taken at VBlank, so the emulator must be running.
+    counts.
+
+    Parameters:
+        source (str): ``auto`` (default: cached snapshot, else capture a fresh
+            one while running), ``last`` (cached snapshot only) or ``fresh``
+            (force a new capture; requires the emulator running).
 
     Returns:
-        dict: the decoded 3D state, or ``{"error", "hint"?}``.
+        dict: the decoded 3D state (with ``frame``), or ``{"error", "hint"?}``.
     """
-    return _snapshot_result(control_call("3d.state"))
+    return _snapshot_result(control_call("3d.state", {"source": source}))
 
 
 @mcp.tool()
-def gpu3d_polygons(max_items: int = 512, vertices: bool = True) -> dict:
-    """Dump the polygons of the last completed 3D frame (read-only).
+def gpu3d_polygons(
+    max_items: int = 512, vertices: bool = True, source: str = "auto"
+) -> dict:
+    """Dump the polygons of a completed 3D frame (read-only).
 
     Parameters:
         max_items (int): Maximum polygons to return (1..8192).
         vertices (bool): Include per-vertex screen positions/colors/texcoords.
+        source (str): ``auto`` (default), ``last`` (cached only) or ``fresh``.
 
     Returns:
         dict: ``{"frame", "count", "total", "polygons": [...]}`` or
         ``{"error", "hint"?}``.
     """
     return _snapshot_result(
-        control_call("3d.polygons", {"max_items": max_items, "vertices": vertices})
+        control_call(
+            "3d.polygons",
+            {"max_items": max_items, "vertices": vertices, "source": source},
+        )
     )
 
 
 @mcp.tool()
-def gpu3d_textures() -> dict:
-    """List the textures used by the polygons of the last completed frame.
+def gpu3d_textures(source: str = "auto") -> dict:
+    """List the textures used by the polygons of a completed frame.
+
+    Parameters:
+        source (str): ``auto`` (default), ``last`` (cached only) or ``fresh``.
 
     Returns:
         dict: ``{"frame", "count", "textures": [...]}`` with
         ``tex_param``/``tex_palette``/``format``/``width``/``height``/``vram_addr``,
         or ``{"error", "hint"?}``.
     """
-    return _snapshot_result(control_call("3d.textures"))
+    return _snapshot_result(control_call("3d.textures", {"source": source}))
 
 
 @mcp.tool()
@@ -82,21 +100,25 @@ def gpu3d_texture_dump(
     index: int | None = None,
     tex_param: int | None = None,
     tex_palette: int | None = None,
+    source: str = "auto",
 ) -> dict:
     """Decode one 3D texture to PNG in ``/out``.
 
     Select either ``index`` (from ``gpu3d_textures``) or an explicit
-    ``tex_param``/``tex_palette`` pair. The decoder is the emulator's own.
+    ``tex_param``/``tex_palette`` pair. The decoder is the emulator's own; the
+    texels are read from the current VRAM, so with the emulator running they can
+    diverge from the cached snapshot (stop it on the captured frame for a match).
 
     Parameters:
         index (int | None): Texture index from ``gpu3d_textures``.
         tex_param (int | None): Explicit texture parameter.
         tex_palette (int | None): Explicit texture palette base.
+        source (str): ``auto`` (default), ``last`` (cached only) or ``fresh``.
 
     Returns:
         dict: ``{"paths": [...], "width", "height"}`` or ``{"error", "hint"?}``.
     """
-    params: dict = {}
+    params: dict = {"source": source}
     if index is not None:
         params["index"] = index
         prefix = f"texture_{index}"
@@ -112,7 +134,7 @@ def gpu3d_texture_dump(
 
     result = control_call("3d.texture", params, timeout=8.0)
     if "error" in result:
-        return result
+        return _snapshot_result(result)
 
     saved = save_framebuffer_pngs(result, format="rgba8", prefix=prefix)
     if not saved.get("paths"):
