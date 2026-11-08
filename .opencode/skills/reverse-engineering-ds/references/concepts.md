@@ -87,7 +87,7 @@ tools yet).
   `cart_trace_start`, `cart_trace_read`, `cart_trace_stop`.
 - **Input / frame / state**: `input_key`, `input_touch`, `input_touch_tap`,
   `input_tap`, `input_sequence`, `input_merge`, `input_release`, `emu_step_frame`,
-  `emu_reset`, `savestate_save`, `savestate_load`.
+  `emu_status`, `emu_reset`, `savestate_save`, `savestate_load`, `savestate_list`.
 - **RAM patches**: `patch_set`, `patch_apply`, `patch_clear`, `patch_list`.
 - **Decomp helpers**: `args_on_hit`, `contract_check`, `field_xref`,
   `field_writers`, `struct_candidate`, `decomp_snippet`, `diff_patch`.

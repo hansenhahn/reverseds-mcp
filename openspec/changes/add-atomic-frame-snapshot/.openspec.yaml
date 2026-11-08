@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-08
+goal: "Rodar N quadros, capturar o snapshot 3D no VBlank alvo e haltar numa única
+  operação; ler o mesmo snapshot com o alvo parado e expor o frame counter."
