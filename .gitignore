@@ -19,6 +19,7 @@ __pycache__/
 # Skill de depuração versionada no repo (o restante de .opencode segue ignorado)
 !.opencode/
 !.opencode/skills/reverse-engineering-ds/SKILL.md
+!.opencode/skills/reverse-engineering-ds/references/*.md
 
 # Documentação de sessão/use-case (temporário)
 docs/roadmap/
