@@ -6,7 +6,7 @@ contents are read with ``rom.info``/``rom.read``. Parsing stays in the domain
 """
 import threading
 
-from ..domain.cartfs import FileEntry, NdsFs, NdsHeader, RomInfo
+from ..domain.cartfs import FatEntry, FileEntry, NdsFs, NdsHeader, RomInfo
 from ..domain.overlays import Overlay, OverlayDetails, OverlayHit, OverlayTable
 from ..application.ports import CartFs, ControlChannel, Overlays
 
@@ -138,6 +138,11 @@ class ChannelRom(CartFs, Overlays):
     def file_for_offset(self, offset: int) -> str | None:
         fs, _ = self._snapshot()
         return fs.file_for_offset(offset)
+
+    def span(self, path: str) -> FatEntry | None:
+        """Return the ``[start, end)`` range of a file by path (or None)."""
+        fs, _ = self._snapshot()
+        return fs.span(path)
 
     def read_file(self, path: str) -> bytes:
         fs, _ = self._snapshot()

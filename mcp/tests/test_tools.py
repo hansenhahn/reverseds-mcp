@@ -96,3 +96,13 @@ def test_lists_overlay_resolution_tools() -> None:
     names = asyncio.run(_list_tools())
     for tool in ("overlay_for_address", "overlay_details", "overlay_select"):
         assert tool in names
+
+
+def test_lists_cart_override_tools() -> None:
+    """Runtime NitroFS override tools are exposed."""
+    names = asyncio.run(_list_tools())
+    for tool in (
+        "cart_override_set", "cart_override_clear", "cart_override_list",
+        "cart_override_reload", "cart_override_stats",
+    ):
+        assert tool in names
