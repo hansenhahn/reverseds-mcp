@@ -1,7 +1,7 @@
 """Port for the cartridge filesystem (NitroFS) of the ROM."""
 from typing import Protocol, runtime_checkable
 
-from ...domain.cartfs import FileEntry, NdsHeader
+from ...domain.cartfs import FatEntry, FileEntry, NdsHeader
 
 
 @runtime_checkable
@@ -43,6 +43,17 @@ class CartFs(Protocol):
 
         Returns:
             str | None: The file path, or None.
+        """
+        ...
+
+    def span(self, path: str) -> FatEntry | None:
+        """Return the ``[start, end)`` range of a file by path (or None).
+
+        Parameters:
+            path (str): The file path inside the ROM.
+
+        Returns:
+            FatEntry | None: The range, or None if the path does not exist.
         """
         ...
 

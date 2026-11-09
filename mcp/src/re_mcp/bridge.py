@@ -8,6 +8,7 @@ import threading
 
 from .config import Config
 from .application.ports import CartFs, ControlChannel, Debugger, FileStore, Overlays
+from .application.cart_override import CartOverride
 from .application.decomp import DecompSnippets
 from .application.overlays import OverlayResolver
 from .application.patch_state import PatchManager
@@ -203,6 +204,14 @@ class Bridge:
             ControlError: If the control channel fails.
         """
         return self._rom_instance()
+
+    def cart_override(self) -> CartOverride:
+        """Return the runtime NitroFS override service.
+
+        Returns:
+            CartOverride: The override service over the channel and ROM FS.
+        """
+        return CartOverride(self.control(), self.cartfs())
 
     def overlays(self) -> Overlays:
         """Return the ROM overlay tables served by the emulator.
