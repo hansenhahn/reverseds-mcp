@@ -20,7 +20,8 @@ class FakeDebugger:
         return b""
     def write_memory(self, addr: int, data: bytes) -> None: ...
     def set_breakpoint(
-        self, addr: int, condition: str | None = None, commands: list[str] | None = None
+        self, addr: int, condition: str | None = None, commands: list[str] | None = None,
+        kind: str = "hw",
     ) -> int:
         return 0
     def backtrace(self) -> list[StackFrame]:

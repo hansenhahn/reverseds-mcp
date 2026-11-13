@@ -288,7 +288,10 @@ def test_set_breakpoint_applies_condition_and_commands(
 
     monkeypatch.setattr(be, "_cmd", fake_cmd)
     number = be.set_breakpoint(
-        0x02000000, "$r3 == 0x30", ["silent", "set {unsigned int}0x06000000 = 1", "continue"]
+        0x02000000,
+        "$r3 == 0x30",
+        ["silent", "set {unsigned int}0x06000000 = 1", "continue"],
+        kind="sw",
     )
     assert number == 1
     assert calls == [
@@ -296,6 +299,24 @@ def test_set_breakpoint_applies_condition_and_commands(
         "condition 1 $r3 == 0x30",
         "commands 1\nsilent\nset {unsigned int}0x06000000 = 1\ncontinue\nend",
     ]
+
+
+def test_set_breakpoint_defaults_to_hardware(
+    backend: tuple[GdbBackend, list[_FakeProc]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default breakpoint kind is hardware (`hbreak`)."""
+    be, _ = backend
+    calls: list[str] = []
+
+    def fake_cmd(text: str, timeout: float = 10) -> str:
+        calls.append(text)
+        if text.startswith("hbreak "):
+            return "Hardware assisted breakpoint 2 at 0x02000000\n(gdb) "
+        return "(gdb) "
+
+    monkeypatch.setattr(be, "_cmd", fake_cmd)
+    assert be.set_breakpoint(0x02000000) == 2
+    assert calls[0] == "hbreak *0x2000000"
 
 
 def test_set_breakpoint_rolls_back_on_invalid_condition(
@@ -307,8 +328,8 @@ def test_set_breakpoint_rolls_back_on_invalid_condition(
 
     def fake_cmd(text: str, timeout: float = 10) -> str:
         calls.append(text)
-        if text.startswith("break "):
-            return "Breakpoint 3 at 0x02000000\n(gdb) "
+        if text.startswith("hbreak "):
+            return "Hardware assisted breakpoint 3 at 0x02000000\n(gdb) "
         if text.startswith("condition "):
             return 'No symbol "foo" in current context.\n(gdb) '
         if text.startswith("delete "):
@@ -333,8 +354,8 @@ def test_set_breakpoint_rejects_invalid_commands(
 
     def fake_cmd(text: str, timeout: float = 10) -> str:
         calls.append(text)
-        if text.startswith("break "):
-            return "Breakpoint 4 at 0x02000000\n(gdb) "
+        if text.startswith("hbreak "):
+            return "Hardware assisted breakpoint 4 at 0x02000000\n(gdb) "
         if text.startswith("delete "):
             return "Deleted breakpoint 4\n(gdb) "
         return "(gdb) "

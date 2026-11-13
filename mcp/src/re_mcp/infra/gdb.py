@@ -219,6 +219,7 @@ class GdbBackend(Debugger):
         addr: int,
         condition: str | None = None,
         commands: list[str] | None = None,
+        kind: str = "hw",
     ) -> int:
         """Create a code breakpoint at ``addr``.
 
@@ -226,6 +227,9 @@ class GdbBackend(Debugger):
             addr (int): Address.
             condition (str | None): Optional gdb expression; gdb only stops when true.
             commands (list[str] | None): Optional gdb commands run on the hit.
+            kind (str): ``"hw"`` (hardware breakpoint, default) or ``"sw"``. The
+                melonDS stub inserts software breakpoints by writing memory, which
+                is unreliable; hardware breakpoints use the ``Z1`` packet instead.
 
         Returns:
             int: The breakpoint number.
@@ -233,8 +237,11 @@ class GdbBackend(Debugger):
         Raises:
             DebugError: If creation or configuration fails (the breakpoint is removed).
         """
-        out = self._cmd(f"break *0x{addr:x}")
-        match = re.search(r"Breakpoint (\d+)", out)
+        command = {"hw": "hbreak", "sw": "break"}.get(kind)
+        if command is None:
+            raise DebugError(f"tipo de breakpoint inválido: {kind!r} (use 'hw' ou 'sw')")
+        out = self._cmd(f"{command} *0x{addr:x}")
+        match = re.search(r"[Bb]reakpoint (\d+)", out)
         if match is None:
             raise DebugError(f"não criou breakpoint: {out.strip()}")
         number = int(match.group(1))

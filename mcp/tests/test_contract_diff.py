@@ -37,6 +37,7 @@ class FakeDebugger:
         addr: int,
         condition: str | None = None,
         commands: list[str] | None = None,
+        kind: str = "hw",
     ) -> int:
         self.sets.append(addr)
         return len(self.sets)

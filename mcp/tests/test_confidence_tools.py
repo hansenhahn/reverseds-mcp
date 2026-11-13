@@ -16,7 +16,7 @@ class FakeDebugger:
     def __init__(self, breakpoints: list[Breakpoint] | None = None) -> None:
         self._breakpoints = breakpoints or []
         self.written: tuple[int, bytes] | None = None
-        self.breakpoint_args: tuple[int, str | None, list[str] | None] | None = None
+        self.breakpoint_args: tuple[int, str | None, list[str] | None, str] | None = None
 
     def core(self) -> str | None:
         return "arm9"
@@ -28,9 +28,10 @@ class FakeDebugger:
         return self._breakpoints
 
     def set_breakpoint(
-        self, addr: int, condition: str | None = None, commands: list[str] | None = None
+        self, addr: int, condition: str | None = None, commands: list[str] | None = None,
+        kind: str = "hw",
     ) -> int:
-        self.breakpoint_args = (addr, condition, commands)
+        self.breakpoint_args = (addr, condition, commands, kind)
         return 11
 
     def write_memory(self, addr: int, data: bytes) -> None:
@@ -183,6 +184,7 @@ def test_set_breakpoint_echoes_normalized_address(
         "addr": "0x020a2d90",
         "condition": None,
         "commands": [],
+        "kind": "hw",
     }
 
 
@@ -201,6 +203,7 @@ def test_set_breakpoint_passes_condition_and_commands(
         0x020A1394,
         "$r0 == 2",
         ["silent", "continue"],
+        "hw",
     )
 
 
