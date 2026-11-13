@@ -46,7 +46,7 @@ class FakeDebugger:
 
     def interrupt(self) -> None: ...
 
-    def set_breakpoint(self, addr: int, condition: str | None = None, commands: list[str] | None = None) -> int:
+    def set_breakpoint(self, addr: int, condition: str | None = None, commands: list[str] | None = None, kind: str = "hw") -> int:
         self.sets.append((addr, condition))
         return 7
 

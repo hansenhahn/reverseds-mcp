@@ -222,6 +222,7 @@ def set_breakpoint(
     addr: int,
     condition: str | None = None,
     commands: list[str] | None = None,
+    kind: str = "hw",
 ) -> dict:
     """Create a code breakpoint at an address, optionally conditional with actions.
 
@@ -231,12 +232,16 @@ def set_breakpoint(
         commands (list[str] | None): Optional gdb commands run on the hit (one per
             line). Auto-patch example: ``["silent",
             "set {unsigned int}0x062003F0 = 0x...", "continue"]``.
+        kind (str): ``"hw"`` (hardware breakpoint, default) or ``"sw"``. Prefer
+            ``"hw"``: the melonDS stub's software-breakpoint insertion writes
+            memory and is unreliable.
 
     Returns:
-        dict: ``{"number", "addr", "condition", "commands"}`` or ``{"error", "hint"?}``.
+        dict: ``{"number", "addr", "condition", "commands", "kind"}`` or
+        ``{"error", "hint"?}``.
     """
     try:
-        number = bridge.debugger().set_breakpoint(addr, condition, commands)
+        number = bridge.debugger().set_breakpoint(addr, condition, commands, kind)
     except DebugError as exc:
         return debug_error(exc)
     return {
@@ -244,6 +249,7 @@ def set_breakpoint(
         "addr": f"0x{addr:08x}",
         "condition": condition,
         "commands": list(commands or []),
+        "kind": kind,
     }
 
 

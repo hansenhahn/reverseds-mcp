@@ -92,6 +92,7 @@ class Debugger(Protocol):
         addr: int,
         condition: str | None = None,
         commands: list[str] | None = None,
+        kind: str = "hw",
     ) -> int:
         """Create a code breakpoint at the address.
 
@@ -99,6 +100,7 @@ class Debugger(Protocol):
             addr (int): Address.
             condition (str | None): Optional gdb expression; gdb only stops when true.
             commands (list[str] | None): Optional gdb commands run on the hit (one per line).
+            kind (str): ``"hw"`` (hardware breakpoint, default) or ``"sw"``.
 
         Returns:
             int: The breakpoint number.
