@@ -73,7 +73,15 @@ class GdbBackend(Debugger):
             elif self._core == core:
                 if self.is_running():
                     self.interrupt()
-                return
+                    return
+                try:
+                    self.read_register("pc")
+                    return
+                except DebugError:
+                    # gdb survived an emulator restart but lost the target: start a
+                    # fresh session instead of reporting a half-connected state.
+                    log.warning("gdb sem alvo no connect; reconectando")
+                    self.close()
             else:
                 try:
                     self.disconnect()

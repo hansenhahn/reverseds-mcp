@@ -61,12 +61,30 @@ def backend(monkeypatch: pytest.MonkeyPatch) -> tuple[GdbBackend, list[_FakeProc
 
 def test_connect_same_core_is_idempotent(
     backend: tuple[GdbBackend, list[_FakeProc]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Connecting twice to the same core spawns a single gdb."""
     be, spawned = backend
     be.connect("arm9")
+    monkeypatch.setattr(GdbBackend, "read_register", lambda self, name: 0x02000000)
     be.connect("arm9")
     assert len(spawned) == 1
+
+
+def test_connect_respawns_when_target_was_lost(
+    backend: tuple[GdbBackend, list[_FakeProc]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live gdb that lost the target (emulator restarted) is replaced."""
+
+    def lost(self: GdbBackend, name: str) -> int:
+        raise DebugError("No registers.")
+
+    be, spawned = backend
+    be.connect("arm9")
+    monkeypatch.setattr(GdbBackend, "read_register", lost)
+    be.connect("arm9")
+    assert len(spawned) == 2
 
 
 def test_connect_switching_core_detaches_first(
