@@ -58,6 +58,24 @@ DMA can be **deferred** (FIFO/flush at end of frame). If the trace shows the
 upload after the draw call, that is normal; do not mistake the deferred upload for
 the cause of a layout bug.
 
+### CPU writes that never become DMA
+
+A loader or LZ decompressor can write the destination buffer with ordinary CPU
+stores (no DMA). When the DMA trace is empty but the buffer changes, use the CPU
+write trace:
+
+- `ram_write_trace_start(addr_start, addr_end)` → resume the scene →
+  `ram_write_trace_read(seconds, summary=True)` → `ram_write_trace_stop()`; or
+  `watch_range(addr_start, addr_end, seconds)` while the game runs.
+- Each write carries `{cpu, addr, value, width, pc}`. `summary` groups by
+  `(addr, width, pc)`: a hot store loop in the decompressor/loader shows up as a
+  large `count` for one PC.
+- Take that PC and `set_breakpoint(pc, kind="hw")` (hardware is the default) to stop
+  on the loop; then inspect the source/destination pointers in registers.
+- The trace is opt-in (one atomic load per CPU write when off) and covers
+  interpreter writes (GDB-enabled build). JIT fastmem writes are not traced; DMA is
+  still `dma_trace_*`.
+
 ## Technique 7 — Confidence: address first, prove the write
 
 **Goal:** eliminate silent errors before chasing causality.
@@ -79,10 +97,19 @@ the cause of a layout bug.
 **Goal:** stop only on the event you care about and reconstruct the call chain.
 
 - `set_breakpoint(addr, condition="$r3 == 0x30")` — gdb evaluates the condition;
-  you only stop when it is true (register or memory).
+  you only stop when it is true (register or memory). Conditions use gdb syntax:
+  `$r0`/`$pc`/`$sp` (with `$`), `*(unsigned short*)0x...`.
+- `set_breakpoint` defaults to a **hardware** breakpoint (`hbreak`/`Z1`,
+  `kind="hw"`). This stub inserts software breakpoints by writing a BKPT into
+  memory, and that path is unreliable (reports `hardware: false`, CPU keeps running).
+  Use `kind="sw"` only when you have a stub where software BPs are known-good.
 - `set_breakpoint(addr, commands=[...])` — commands run on the hit. Auto-patch
   pattern: `["silent", "set {unsigned int}0x... = 0x...", "continue"]` (write the
   immediate and keep running, no `resume → wait → mem_write` loop).
+- **`Invalid hex digit N`/`Broken pipe`/`No registers` are stub desync symptoms**,
+  not a condition-parser failure: gdb read a stop reply `Sxx` where it expected
+  hex data. Restart the emulator (or at least reconnect) and prefer `kind="hw"`;
+  do not rewrite the condition.
 - `debug_backtrace()` — gdb frames first (`source="gdb"`); when gdb returns fewer
   than four, the MCP scans the stack (`sp..sp+0x800`) and appends even-aligned
   return addresses in ITCM/main RAM/BIOS as `source="stack"`. Candidates are
@@ -130,3 +157,8 @@ on each one.
 - **Read the access, not just the address.** If a read watchpoint hits the LZ
   decoder, you found the producer of the buffer; the consumer is later. Arm after
   the producer or filter by PC.
+- **Software breakpoints and RAM writes can wedge this stub.** The BKPT write
+  goes through the same `X`/`M` path as `mem_write`; if the session dies or a new
+  `debug_connect` says `No registers`, restart the emulator. `set_breakpoint`'s
+  hardware default avoids the BKPT write; `cart_override_*` avoids RAM writes for
+  asset tests entirely.

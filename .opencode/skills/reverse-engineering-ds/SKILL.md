@@ -1,8 +1,8 @@
 ---
 name: reverse-engineering-ds
-description: Game-agnostic techniques for reverse engineering Nintendo DS games with the re-mcp MCP server and the melonDS fork (control channel + GDB stub). Covers frame-accurate freeze/step, renderer-as-oracle, 3D state/polygons/textures and GXFIFO tracing, differential memory analysis, DMA/IO tracing, overlay and address math, watchpoint/hit-log semantics, text/UI pipeline mapping, and decomp/patch standardization. Use for NDS animations, HUDs, graphics, assets, 3D scenes, overlays and the code that produces them.
+description: Game-agnostic techniques for reverse engineering Nintendo DS games with the re-mcp MCP server and the melonDS fork (control channel + GDB stub). Covers frame-accurate freeze/step, renderer-as-oracle, 3D state/polygons/textures and GXFIFO tracing, differential memory analysis, DMA/IO and CPU RAM write tracing, runtime NitroFS asset overrides, overlay and address math, watchpoint/hit-log semantics, text/UI pipeline mapping, and decomp/patch standardization. Use for NDS animations, HUDs, graphics, assets, 3D scenes, overlays and the code that produces them.
 metadata:
-  version: "0.7"
+  version: "0.8"
 ---
 
 # Reverse engineering NDS games (re-mcp + melonDS)
@@ -28,6 +28,9 @@ reference for the task at hand.
 | Stop on an exact frame and inspect/step deterministically | `runtime-debugging.md` T1 |
 | Diff regions between two states/frames | `runtime-debugging.md` T3 |
 | Find the code that fills VRAM when a CPU watchpoint misses it | `runtime-debugging.md` T4 |
+| Find the CPU code that writes a RAM range (loader/decompressor) | `runtime-debugging.md` T4 |
+| Make breakpoints reliable (hardware vs software, conditional) | `runtime-debugging.md` T8 |
+| Replace a NitroFS asset at runtime without repacking | `decomp.md` T5 |
 | Validate address/overlay and prove the write | `runtime-debugging.md` T7 |
 | Stop on a condition and reconstruct the call chain | `runtime-debugging.md` T8 |
 | Cold-reset and record hits without stopping | `runtime-debugging.md` T9 |
@@ -38,6 +41,7 @@ reference for the task at hand.
 | Inspect a 3D scene: state, polygons, textures, GXFIFO trace | `display.md` T14 |
 | Locate a 3D element on screen (for repositioning) | `display.md` T14 |
 | Find the RAM source of a 3D texture / display list | `display.md` T14 |
+| Prove a runtime override was read by the game | `decomp.md` T5 |
 | Go from a visible asset to its files and loader/drawer | `decomp.md` T5 |
 | Keep static/overlay decomp units and offsets honest | `decomp.md` T10 |
 | Make and verify a minimal reproducible patch | `decomp.md` T13 |
@@ -53,12 +57,13 @@ reference for the task at hand.
 - **`references/concepts.md`** — channels, provenance tools, definitions (static
   vs overlay, file/code offsets, VRAM/OAM/palette, cells, surfaces, DMA).
 - **`references/runtime-debugging.md`** — Techniques 1, 3, 4, 7, 8, 9, 11: freeze,
-  differential analysis, DMA/IO tracing, confidence, conditional BPs/backtrace,
-  cold reset/hit log, watchpoint semantics.
+  differential analysis, DMA/IO tracing and CPU RAM write tracing, confidence,
+  hardware/conditional BPs + backtrace, cold reset/hit log, watchpoint semantics.
 - **`references/display.md`** — Techniques 2, 6, 12, 14: renderer as oracle, VRAM
   tile sheets, text/UI pipeline, 3D state/polygons/textures + GXFIFO trace.
 - **`references/decomp.md`** — Techniques 5, 10, 13 plus the canonical flow:
-  asset identification, overlay ownership/decomp style, patch/rebuild.
+  asset identification, runtime NitroFS override (MITM), overlay ownership/decomp
+  style, patch/rebuild.
 - **`references/decomp-discipline.md`** — Definition of Done, stub policy, context
   ledger, controlled vocabulary, runtime-first for order/effect, checkpoints.
 - **`references/worked-kh358.md`**, **`references/worked-hotel-dusk.md`** — worked
@@ -73,6 +78,11 @@ reference for the task at hand.
   time out).
 - **Bulk memory goes to a file** (`mem_dump_file`); copying hex by hand is
   error-prone.
+- **Use hardware breakpoints** (`set_breakpoint(..., kind="hw")`, the default).
+  Software BPs write a BKPT into memory and are unreliable in this stub; the
+  condition is evaluated by gdb and was never the problem.
+- **After a stub desync** (`Broken pipe`, `No registers`, `Invalid hex digit`),
+  restart/reconnect the emulator/gdb; do not debug the condition string.
 - **Name the screen (top/bottom) and engine (A/B)** in every capture and dump.
 - **Reuse the toolkit**: prefer existing parsers/extractors over reimplementing
   formats.
@@ -110,6 +120,10 @@ reference for the task at hand.
 - Hardcoding a game's bases/addresses into reusable rules or docs.
 - Treating a stub as the destination or "it compiles" as done (definition of
   done is stricter).
+- Using a software breakpoint when `kind="hw"` works, or blaming a condition for a
+  desynced GDB stub (`Invalid hex digit N` is a stray stop reply, not the parser).
+- Repacking the ROM to test an asset before trying `cart_override_*` (the override
+  serves the host file to the real loader; no repack, no RAM write).
 - Presenting a partial model as closed, or "authoritative" before mechanism,
   source and order are all proven.
 - Settling execution order/"who wins" purely from static code instead of runtime.

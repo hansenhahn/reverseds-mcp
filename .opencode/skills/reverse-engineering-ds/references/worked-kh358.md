@@ -16,3 +16,9 @@
   prepare_line → walk_line → draw_glyph → clip_area → copy_square`; the header
   strip is uploaded by DMA (`0x021F2E00 → 0x06204C20`) and a static BG3 upload
   (`0x062050A0`) can overwrite the last tiles.
+- Runtime asset test: `/mi/wd/wd_tt` is a P2 container; `cart_override_set` on it
+  serves a host repack on the game's real cart reads (no repack/RAM write).
+  `cart_read`/`rom.read` keep returning the original; `cart_override_stats.hits`
+  proves the loader read the override. Reload a pre-load savestate each iteration.
+- Breakpoints: use the hardware default (`set_breakpoint(..., kind="hw")`); the
+  software BKPT insertion path can desync this stub.

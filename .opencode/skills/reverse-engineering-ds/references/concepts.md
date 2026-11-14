@@ -7,7 +7,7 @@ Read this first. It is the shared vocabulary for every other reference.
 - **melonDS fork** (host) exposes two independent channels:
   - **Control channel** (JSON-RPC over a Unix socket): input, screen capture,
     savestates, deterministic frame-step, layer render, video/VRAM/IO state,
-    cart/DMA traces.
+    cart/DMA/CPU-write traces, and runtime NitroFS file overrides.
   - **GDB stub** (ARM9 `:3333`, ARM7 `:3334`): breakpoints, watchpoints,
     registers, memory, stepping, disassembly.
 - **re-mcp** connects to the socket (bind-mount) and the stub (host network).
@@ -48,14 +48,23 @@ Read this first. It is the shared vocabulary for every other reference.
   logged `pc`/`addr` as **observations with hardware caveats** (Technique 11).
 - **DMA transfer**: `{src, dst, len, cpu, pc, DMAxCNT}`. DMA writes do **not**
   trigger CPU hardware watchpoints.
+- **CPU write trace**: `{cpu, addr, value, width, pc}` for CPU data stores inside
+  an address range. Covers interpreter writes (the GDB-enabled path), not DMA or
+  JIT fastmem.
+- **Runtime NitroFS override (MITM)**: serve a host file in place of a NitroFS
+  file on the game's cart reads. The MCP resolves `path -> [rom_start, rom_end)`
+  via FNT/FAT; `rom.read`/`cart_read` still return the original image. Overrides
+  are per-cart, are not in savestates, and are cleared on cart swap.
+- **Hardware vs software breakpoint**: `set_breakpoint` defaults to hardware
+  (`hbreak`/`Z1`). Software breakpoints (`kind="sw"`) write a BKPT into memory
+  and are unreliable in this stub; conditions are always evaluated by gdb.
 
 ## Tool inventory (current)
 
 Canonical map of the registered tools, grouped by use. This is a **name index**,
 not signatures: read the tool's own docstring/returns before calling. If a tool
 you need is missing here, it is not registered — do not assume it exists
-(`decomp_status`, `project_note`, `write_trace`, `parse_trace` are proposals, not
-tools yet).
+(`decomp_status`, `project_note`, `parse_trace` are proposals, not tools yet).
 
 - **Provenance/ROM**: `rom_info`, `rom_details`, `addr_valid`, `health_check`,
   `ping`, `control_reset`.
@@ -68,9 +77,10 @@ tools yet).
   `list_breakpoints`, `set_breakpoint`, `remove_breakpoint`, `set_watchpoint`,
   `mem_read`, `mem_write`, `mem_dump_file`, `disassemble`, `find_reader`,
   `find_writer`.
-- **Hit log / DMA**: `hit_log_start`, `hit_log_stop`, `hit_log_clear`,
-  `hit_log_read`, `dma_trace_start`, `dma_trace_read`, `dma_trace_stop`,
-  `dma_source`.
+- **Hit log / DMA / CPU writes**: `hit_log_start`, `hit_log_stop`,
+  `hit_log_clear`, `hit_log_read`, `dma_trace_start`, `dma_trace_read`,
+  `dma_trace_stop`, `dma_source`, `ram_write_trace_start`,
+  `ram_write_trace_read`, `ram_write_trace_stop`, `watch_range`.
 - **Display/video**: `video_state`, `vram_layout`, `read_vram`, `vram_tile_bytes`,
   `map_cell`, `cell_at_screen`, `dump_tilemap`, `render_bg_map`, `render_layer`,
   `find_tile_in_ram`, `io_read`, `screen_capture`.
@@ -85,6 +95,8 @@ tools yet).
 - **Memory diff**: `mem_snapshot`, `state_diff`.
 - **Cartridge/NitroFS**: `cart_list`, `cart_read`, `cart_read_files`, `cart_file`,
   `cart_trace_start`, `cart_trace_read`, `cart_trace_stop`.
+- **Runtime asset override**: `cart_override_set`, `cart_override_clear`,
+  `cart_override_list`, `cart_override_reload`, `cart_override_stats`.
 - **Input / frame / state**: `input_key`, `input_touch`, `input_touch_tap`,
   `input_tap`, `input_sequence`, `input_merge`, `input_release`, `emu_step_frame`,
   `emu_status`, `emu_reset`, `savestate_save`, `savestate_load`, `savestate_list`.

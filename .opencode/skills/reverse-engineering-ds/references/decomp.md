@@ -18,6 +18,34 @@ it.
 5. Extract with `cart_file`/`cart_read` + `mem_dump_file`, then rebuild the asset
    offline.
 
+### 5.1 Runtime asset override (MITM) — test without repacking
+
+**Goal:** iterate on an asset in the real loader without repacking the ROM or
+writing RAM (which is unreliable through this GDB stub).
+
+1. Extract the original: `cart_read(path)` → file in `/out`. `rom.read`/`cart_read`
+   always return the **original** image, even with an override active.
+2. Patch/repack the asset offline. Keep the **same size** as the ROM file
+   (zero-pad if your repack shrinks it): the game trusts the FAT size.
+3. `cart_override_set(path, host_path)` — the MCP resolves the NitroFS path to
+   `[rom_start, rom_end)` through FNT/FAT; the emulator serves the host bytes on
+   the game's real cart reads (CPU and DMA).
+4. Load the scene from a savestate saved **before** the asset load, then check
+   `cart_override_stats(path)`; `hits`/`bytes > 0` proves the game read it.
+5. Iterate: edit the host file, `cart_override_reload(path)`, reload the pre-load
+   savestate and re-check. `cart_override_list` shows the range and counters.
+6. Revert with `cart_override_clear(path)` and reload the scene.
+
+Caveats:
+
+- `host_path` is resolved by the **emulator** process; in Docker it must be visible
+  to that container/filesystem.
+- Host smaller than the range → zero-fill; larger → excess ignored. Overlapping
+  ranges are rejected.
+- Overrides are per-cart, are **not** serialized in savestates, and disappear on a
+  cart swap. `clear` explicitly when done.
+- This is a test path; the final patch still needs a ROM repack.
+
 ## Technique 10 — Overlay model and decomp unit ownership
 
 **Goal:** keep static and overlay code in the right unit, avoid duplicate/partial
