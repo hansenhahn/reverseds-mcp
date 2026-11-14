@@ -5,6 +5,20 @@ from ..infra.control import ControlError
 from .app import bridge, error, mcp
 
 _CONTROL_HINT = "Verifique se o melonDS está rodando com o canal de controle habilitado."
+_NOT_IMPLEMENTED_HINT = (
+    "O emulador não expõe ram.write_trace.*; reinicie com o build que inclui o PR #24."
+)
+_ZERO_HINT = (
+    "Nenhum write coletado: a trace foi iniciada com ram_write_trace_start? "
+    "O jogo rodou durante a coleta? JIT fastmem não é coberto."
+)
+
+
+def _control_hint(exc: ControlError) -> str:
+    """Pick a hint for a failed control-channel call."""
+    if "method not found" in str(exc).lower():
+        return _NOT_IMPLEMENTED_HINT
+    return _CONTROL_HINT
 
 
 def _write_dict(write: RamWrite) -> dict:
@@ -73,11 +87,11 @@ def ram_write_trace_start(
         return error(ValueError("addr_start deve ser menor que addr_end"))
     try:
         channel = bridge.control()
+        return RamTrace(channel).start(
+            addr_start, addr_end, batch, timeout_ms, max_items
+        )
     except ControlError as exc:
-        return error(exc, _CONTROL_HINT)
-    return RamTrace(channel).start(
-        addr_start, addr_end, batch, timeout_ms, max_items
-    )
+        return error(exc, _control_hint(exc))
 
 
 @mcp.tool()
@@ -91,6 +105,9 @@ def ram_write_trace_read(
     summary: bool = False,
 ) -> dict:
     """Collect the CPU RAM writes for a period, optionally filtered/aggregated.
+
+    Collects from an **already-started** trace; it never starts or restarts one.
+    Call ``ram_write_trace_start`` first (or use ``watch_range``).
 
     Parameters:
         seconds (float): Collection duration in seconds.
@@ -112,23 +129,32 @@ def ram_write_trace_read(
     try:
         cpu_value = _cpu_value(cpu)
         channel = bridge.control()
-    except (ValueError, ControlError) as exc:
-        return error(exc, _CONTROL_HINT if isinstance(exc, ControlError) else None)
+    except ValueError as exc:
+        return error(exc, "Use 'arm9' ou 'arm7'.")
+    except ControlError as exc:
+        return error(exc, _control_hint(exc))
     trace = RamTrace(channel)
-    writes = trace.collect(
-        seconds,
-        addr_start=addr_start,
-        addr_end=addr_end,
-        cpu=cpu_value,
-        pc=pc,
-        max_items=max_items,
-    )
+    try:
+        writes = trace.collect(
+            seconds,
+            addr_start=addr_start,
+            addr_end=addr_end,
+            cpu=cpu_value,
+            pc=pc,
+            max_items=max_items,
+        )
+    except ControlError as exc:
+        return error(exc, _control_hint(exc))
     if summary:
-        return {
+        out = {
             "count": len(writes),
             "groups": [_group_dict(group) for group in trace.summarize(writes)],
         }
-    return {"count": len(writes), "writes": [_write_dict(write) for write in writes]}
+    else:
+        out = {"count": len(writes), "writes": [_write_dict(write) for write in writes]}
+    if not writes:
+        out["hint"] = _ZERO_HINT
+    return out
 
 
 @mcp.tool()
@@ -140,9 +166,9 @@ def ram_write_trace_stop() -> dict:
     """
     try:
         channel = bridge.control()
+        return RamTrace(channel).stop()
     except ControlError as exc:
-        return error(exc, _CONTROL_HINT)
-    return RamTrace(channel).stop()
+        return error(exc, _control_hint(exc))
 
 
 @mcp.tool()
@@ -157,6 +183,8 @@ def watch_range(
     """Watch CPU writes in ``[addr_start, addr_end)`` for a period.
 
     Convenience wrapper: starts the trace, collects for ``seconds`` and stops.
+    This is the only tool that starts/stops automatically; the game must be
+    running during the collection window.
 
     Parameters:
         addr_start (int): First address (inclusive).
@@ -174,13 +202,15 @@ def watch_range(
     try:
         cpu_value = _cpu_value(cpu)
         channel = bridge.control()
-    except (ValueError, ControlError) as exc:
-        return error(exc, _CONTROL_HINT if isinstance(exc, ControlError) else None)
+    except ValueError as exc:
+        return error(exc, "Use 'arm9' ou 'arm7'.")
+    except ControlError as exc:
+        return error(exc, _control_hint(exc))
     trace = RamTrace(channel)
-    started = trace.start(addr_start, addr_end)
-    if "error" in started:
-        return started
     try:
+        started = trace.start(addr_start, addr_end)
+        if "error" in started:
+            return started
         writes = trace.collect(
             seconds,
             addr_start=addr_start,
@@ -189,9 +219,14 @@ def watch_range(
             pc=pc,
             max_items=max_items,
         )
+    except ControlError as exc:
+        return error(exc, _control_hint(exc))
     finally:
         try:
             trace.stop()
         except ControlError:
             pass
-    return {"count": len(writes), "writes": [_write_dict(write) for write in writes]}
+    out = {"count": len(writes), "writes": [_write_dict(write) for write in writes]}
+    if not writes:
+        out["hint"] = _ZERO_HINT
+    return out

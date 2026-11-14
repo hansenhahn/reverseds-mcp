@@ -3,6 +3,7 @@ import pytest
 
 from re_mcp.application.ram_trace import RamTrace
 from re_mcp.domain.ram_trace import RamWrite
+from re_mcp.infra.control import ControlError
 from re_mcp.tools import ram_trace as tools
 
 
@@ -145,3 +146,51 @@ def test_watch_range_starts_collects_and_stops(
         "ram.write_trace.start",
         "ram.write_trace.stop",
     ]
+
+class FailingChannel(FakeChannel):
+    """Channel whose calls/reads raise a control-channel error."""
+
+    def __init__(self, message: str = "ram.write_trace.start: method not found") -> None:
+        super().__init__()
+        self.message = message
+
+    def call(
+        self, method: str, params: dict | None = None, timeout: float | None = None
+    ) -> dict:
+        raise ControlError(self.message)
+
+    def read_message(self, timeout: float) -> dict | None:
+        raise ControlError(self.message)
+
+
+def test_tool_start_maps_control_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing emulator method becomes a clear error with a hint."""
+    monkeypatch.setattr(tools, "bridge", FakeBridge(FailingChannel()))
+    out = tools.ram_write_trace_start(0x02000000, 0x02100000)
+    assert "error" in out
+    assert "PR #24" in out["hint"]
+
+
+def test_tool_watch_range_maps_control_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """watch_range does not leak an unhandled ControlError."""
+    monkeypatch.setattr(tools, "bridge", FakeBridge(FailingChannel()))
+    out = tools.watch_range(0x02000000, 0x02100000, seconds=0.1)
+    assert "error" in out
+    assert "hint" in out
+
+
+def test_tool_read_maps_read_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A control error while collecting is returned, not raised."""
+    monkeypatch.setattr(tools, "bridge", FakeBridge(FailingChannel("conexão encerrada")))
+    out = tools.ram_write_trace_read(seconds=0.1)
+    assert "error" in out
+    assert "hint" in out
+
+
+def test_tool_read_without_writes_has_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty result explains the start/running requirement."""
+    monkeypatch.setattr(tools, "bridge", FakeBridge(FakeChannel()))
+    monkeypatch.setattr(tools, "RamTrace", lambda ch: RamTrace(ch, clock=FakeClock()))
+    out = tools.ram_write_trace_read(seconds=0.5)
+    assert out["count"] == 0
+    assert "ram_write_trace_start" in out["hint"]
