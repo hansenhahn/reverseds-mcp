@@ -106,3 +106,13 @@ def test_lists_cart_override_tools() -> None:
         "cart_override_reload", "cart_override_stats",
     ):
         assert tool in names
+
+
+def test_lists_ram_write_trace_tools() -> None:
+    """CPU RAM write trace tools are exposed."""
+    names = asyncio.run(_list_tools())
+    for tool in (
+        "ram_write_trace_start", "ram_write_trace_read",
+        "ram_write_trace_stop", "watch_range",
+    ):
+        assert tool in names
