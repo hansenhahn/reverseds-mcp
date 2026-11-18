@@ -89,6 +89,12 @@ def debug_error(exc: Exception) -> dict:
     lower = msg.lower()
     if "alvo em execução" in msg:
         return error(exc, "Use debug_wait() ou debug_interrupt() antes de outros comandos.")
+    if "leitura incompleta" in lower:
+        return error(
+            exc,
+            "O alvo pode estar rodando/dessincronizado (ex.: breakpoint com 'continue'); "
+            "use debug_interrupt/debug_wait e confirme emu_status halted=true antes de ler.",
+        )
     if "gdb não iniciado" in msg:
         return error(exc, "Chame debug_connect() primeiro.")
     if "falha de conexão" in msg or "não conectou" in msg:

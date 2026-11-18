@@ -106,6 +106,12 @@ write trace:
 - `set_breakpoint(addr, commands=[...])` — commands run on the hit. Auto-patch
   pattern: `["silent", "set {unsigned int}0x... = 0x...", "continue"]` (write the
   immediate and keep running, no `resume → wait → mem_write` loop).
+- **A command list ending in `continue` auto-resumes after each hit.** While the
+  target runs, `mem_read`/`mem_dump_file` and watchpoint edits fail with
+  `alvo em execução` or `leitura incompleta ... veio 0` (the dump needs a halted
+  target). Use `debug_resume` + `debug_wait`, or drop `continue` while you need to
+  inspect; confirm `emu_status.halted` before reading. This is debugger state, not
+  a broken memory bridge.
 - **`Invalid hex digit N`/`Broken pipe`/`No registers` are stub desync symptoms**,
   not a condition-parser failure: gdb read a stop reply `Sxx` where it expected
   hex data. Restart the emulator (or at least reconnect) and prefer `kind="hw"`;
