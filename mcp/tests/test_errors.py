@@ -31,3 +31,10 @@ def test_debug_error_generic() -> None:
     """An unknown error does not invent a hint."""
     out = debug_error(DebugError("outra coisa qualquer"))
     assert "hint" not in out
+
+
+def test_debug_error_incomplete_read_hint() -> None:
+    """An incomplete memory read points at a running/desynced target."""
+    out = debug_error(DebugError("leitura incompleta em 0x02000000: esperado 4 byte(s), veio 0"))
+    assert "debug_interrupt" in out["hint"]
+    assert "halted=true" in out["hint"]
