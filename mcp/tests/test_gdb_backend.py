@@ -374,11 +374,14 @@ def test_read_memory_retries_after_interrupt(
     be, _ = backend
     be.connect("arm9")
     dumps = 0
+    flushes = 0
     calls: list[str] = []
 
     def fake_cmd(text: str, timeout: float = 10) -> str:
-        nonlocal dumps
+        nonlocal dumps, flushes
         calls.append(text)
+        if text == "maintenance flush dcache":
+            flushes += 1
         if text.startswith("dump binary memory "):
             dumps += 1
             path = text.split()[3]
@@ -393,6 +396,7 @@ def test_read_memory_retries_after_interrupt(
     assert be.read_memory(0x02000000, 4) == b"\xde\xad\xbe\xef"
     assert interrupted == [True]
     assert dumps == 2
+    assert flushes == 2
 
 
 def test_read_memory_raises_when_retry_is_also_empty(
