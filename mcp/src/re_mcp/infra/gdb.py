@@ -172,9 +172,16 @@ class GdbBackend(Debugger):
             )
         path = self._temp_path()
         try:
-            self._cmd(f"dump binary memory {path} 0x{addr:x} 0x{addr + size:x}")
-            with open(path, "rb") as handle:
-                data = handle.read()
+            data = self._dump_memory(path, addr, size)
+            if len(data) != size:
+                # The MCP's background-continue state can look idle while gdb is
+                # actually running (e.g. breakpoint commands ending in
+                # 'continue'). Stop the target and retry once, like a fresh gdb.
+                try:
+                    self.interrupt()
+                except DebugError:
+                    pass
+                data = self._dump_memory(path, addr, size)
         finally:
             os.unlink(path)
         if len(data) != size:
@@ -182,6 +189,12 @@ class GdbBackend(Debugger):
                 f"leitura incompleta em 0x{addr:x}: esperado {size} byte(s), veio {len(data)}"
             )
         return data
+
+    def _dump_memory(self, path: str, addr: int, size: int) -> bytes:
+        """Dump ``[addr, addr+size)`` to ``path`` and return the bytes read."""
+        self._cmd(f"dump binary memory {path} 0x{addr:x} 0x{addr + size:x}")
+        with open(path, "rb") as handle:
+            return handle.read()
 
     def write_memory(self, addr: int, data: bytes) -> None:
         """Write ``data`` to emulated memory starting at ``addr``.

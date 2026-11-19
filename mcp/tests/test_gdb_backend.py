@@ -365,3 +365,53 @@ def test_set_breakpoint_rejects_invalid_commands(
         be.set_breakpoint(0x02000000, None, commands)
     assert not any(call.startswith("commands ") for call in calls)
     assert calls[-1] == "delete 4"
+
+
+def test_read_memory_retries_after_interrupt(
+    backend: tuple[GdbBackend, list[_FakeProc]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty dump (stale running state) interrupts and retries once."""
+    be, _ = backend
+    be.connect("arm9")
+    dumps = 0
+    calls: list[str] = []
+
+    def fake_cmd(text: str, timeout: float = 10) -> str:
+        nonlocal dumps
+        calls.append(text)
+        if text.startswith("dump binary memory "):
+            dumps += 1
+            path = text.split()[3]
+            with open(path, "wb") as handle:
+                if dumps > 1:
+                    handle.write(b"\xde\xad\xbe\xef")
+        return "(gdb) "
+
+    interrupted: list[bool] = []
+    monkeypatch.setattr(be, "_cmd", fake_cmd)
+    monkeypatch.setattr(be, "interrupt", lambda: interrupted.append(True))
+    assert be.read_memory(0x02000000, 4) == b"\xde\xad\xbe\xef"
+    assert interrupted == [True]
+    assert dumps == 2
+
+
+def test_read_memory_raises_when_retry_is_also_empty(
+    backend: tuple[GdbBackend, list[_FakeProc]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second empty dump still fails with the incomplete-read error."""
+    be, _ = backend
+    be.connect("arm9")
+
+    def fake_cmd(text: str, timeout: float = 10) -> str:
+        if text.startswith("dump binary memory "):
+            path = text.split()[3]
+            with open(path, "wb"):
+                pass
+        return "(gdb) "
+
+    fired: list[bool] = []
+    monkeypatch.setattr(be, "_cmd", fake_cmd)
+    monkeypatch.setattr(be, "interrupt", lambda: fired.append(True))
+    with pytest.raises(DebugError, match="leitura incompleta"):
+        be.read_memory(0x02000000, 4)
+    assert fired == [True]
