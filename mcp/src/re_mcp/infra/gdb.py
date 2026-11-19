@@ -192,6 +192,10 @@ class GdbBackend(Debugger):
 
     def _dump_memory(self, path: str, addr: int, size: int) -> bytes:
         """Dump ``[addr, addr+size)`` to ``path`` and return the bytes read."""
+        # gdb caches target memory (dcache). A long-lived session can answer a
+        # dump from a stale line; a fresh raw gdb does not. Flush before every
+        # dump so mem_read matches a fresh session.
+        self._cmd("maintenance flush dcache")
         self._cmd(f"dump binary memory {path} 0x{addr:x} 0x{addr + size:x}")
         with open(path, "rb") as handle:
             return handle.read()
